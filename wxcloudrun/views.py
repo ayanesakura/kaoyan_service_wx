@@ -5,9 +5,7 @@ from wxcloudrun.dao import delete_counterbyid, query_counterbyid, insert_counter
 from wxcloudrun.model import Counters
 from wxcloudrun.response import make_succ_empty_response, make_succ_response, make_err_response
 from flask import request
-# from wxcloudrun.apis.resume import analyze_resume
-import os
-# from wxcloudrun.apis.interview import process_audio, get_question
+from wxcloudrun.apis.school_search import get_school_structure, search_schools
 from flask import jsonify
 
 
@@ -69,3 +67,11 @@ def get_count():
     """
     counter = Counters.query.filter(Counters.id == 1).first()
     return make_succ_response(0) if counter is None else make_succ_response(counter.count)
+
+@app.route('/api/school_search', methods=['POST'])
+def search_schools_api():
+    return search_schools()
+
+@app.route('/api/school_structure', methods=['POST'])
+def get_school_structure_api():
+    return get_school_structure()
