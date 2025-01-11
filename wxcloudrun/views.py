@@ -5,9 +5,9 @@ from wxcloudrun.dao import delete_counterbyid, query_counterbyid, insert_counter
 from wxcloudrun.model import Counters
 from wxcloudrun.response import make_succ_empty_response, make_succ_response, make_err_response
 from flask import request
-from wxcloudrun.apis.resume import analyze_resume
+# from wxcloudrun.apis.resume import analyze_resume
 import os
-from wxcloudrun.apis.interview import process_audio, get_question
+# from wxcloudrun.apis.interview import process_audio, get_question
 from flask import jsonify
 
 
@@ -69,23 +69,3 @@ def get_count():
     """
     counter = Counters.query.filter(Counters.id == 1).first()
     return make_succ_response(0) if counter is None else make_succ_response(counter.count)
-
-
-@app.route('/api/analyze_resume', methods=['POST'])
-def analyze_resume_view():
-    save_dir = '/tmp'
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    return analyze_resume(save_dir)
-
-@app.route('/api/get_question', methods=['POST'])
-def get_question_view():
-    try:
-        return get_question()
-    except Exception as e:
-        app.logger.error(f"Error in get_question_view: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/process_audio', methods=['POST'])
-def process_audio_view():
-    return process_audio(app)
