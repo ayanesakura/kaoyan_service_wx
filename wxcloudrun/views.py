@@ -6,6 +6,7 @@ from wxcloudrun.model import Counters
 from wxcloudrun.response import make_succ_empty_response, make_succ_response, make_err_response
 from flask import request
 from wxcloudrun.apis.school_search import get_school_structure, search_schools
+from wxcloudrun.apis.analysis import analyze_application
 from flask import jsonify
 
 
@@ -75,3 +76,7 @@ def search_schools_api():
 @app.route('/api/school_structure', methods=['POST'])
 def get_school_structure_api():
     return get_school_structure()
+
+@app.route('/api/analyze', methods=['POST'])
+def analyze_application_api():
+    return analyze_application()
