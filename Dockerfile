@@ -14,7 +14,9 @@ RUN apk add ca-certificates
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tencent.com/g' /etc/apk/repositories \
 # 安装python3
 && apk add --update --no-cache python3 py3-pip \
+&& apk add gcc g++ make cmake gfortran libffi-dev openssl-dev libtool python3-dev \
 && rm -rf /var/cache/apk/*
+
 
 # 拷贝当前项目到/app目录下（.dockerignore中文件除外）
 COPY . /app
@@ -33,7 +35,7 @@ RUN pip config set global.index-url http://mirrors.cloud.tencent.com/pypi/simple
 # 暴露端口。
 # 此处端口必须与「服务设置」-「流水线」以及「手动上传代码包」部署时填写的端口一致，否则会部署失败。
 EXPOSE 80
-
+RUN export ARK_API_KEY="126b9b49-89ef-4ac3-8921-8c38c93ae943"
 # 执行启动命令
 # 写多行独立的CMD命令是错误写法！只有最后一行CMD命令会被执行，之前的都会被忽略，导致业务报错。
 # 请参考[Docker官方文档之CMD命令](https://docs.docker.com/engine/reference/builder/#cmd)

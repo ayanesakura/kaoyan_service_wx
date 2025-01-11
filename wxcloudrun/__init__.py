@@ -2,14 +2,16 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 import pymysql
 import config
-
+import os
 # 因MySQLDB不支持Python3，使用pymysql扩展库代替MySQLDB库
 pymysql.install_as_MySQLdb()
 
 # 初始化web应用
 app = Flask(__name__, instance_relative_config=True)
 app.config['DEBUG'] = config.DEBUG
-
+UPLOAD_FOLDER = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # 设定数据库链接
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://{}:{}@{}/flask_demo'.format(config.username, config.password,
                                                                              config.db_address)
