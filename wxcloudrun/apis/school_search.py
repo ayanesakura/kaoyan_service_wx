@@ -10,12 +10,13 @@ from typing import List, Dict
 # 加载学校基础数据
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 cur_dir = os.path.dirname(cur_dir)
-SCHOOL_DATA_PATH = os.path.join(cur_dir, 'resources/全部学校信息.json')
+
+SCHOOL_DATA_PATH = os.path.join(cur_dir, 'resources/fx_flat.json')
 # 加载专业详细数据
-MAJOR_DATA_PATH = os.path.join(cur_dir, 'resources/all_major_detail.json')
+MAJOR_DATA_PATH = os.path.join(cur_dir, 'resources/fx_flat.json')
 
 schools = loads_json(SCHOOL_DATA_PATH)
-schools = [school['学校名称'] for school in schools]
+schools = set([school['学校名称'] for school in schools])
 
 # 加载并预处理专业数据
 major_data = loads_json(MAJOR_DATA_PATH)
@@ -23,9 +24,9 @@ school_structure = {}
 
 # 构建学校-学院-专业的层级结构
 for item in major_data:
-    school = item['dwmc']
-    college = item['yxsmc']
-    major = item['zymc']
+    school = item['学校名称']
+    college = item['院系名称']
+    major = item['专业名称']
     
     if school not in school_structure:
         school_structure[school] = {}
