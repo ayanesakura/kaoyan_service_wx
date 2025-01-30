@@ -51,7 +51,7 @@ def search_schools():
         return jsonify({
             'code': 400,
             'message': '搜索关键词不能为空'
-        }), 400
+        })
         
     # 简单的模糊匹配实现
     results = []
@@ -75,13 +75,13 @@ def get_school_structure():
         return jsonify({
             'code': 400,
             'message': '学校名称不能为空'
-        }), 400
+        })
         
     if school_name not in school_structure:
         return jsonify({
             'code': 404,
             'message': '未找到该学校信息'
-        }), 404
+        })
     
     result = {
         "school": school_name,

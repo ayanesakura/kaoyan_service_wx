@@ -7,6 +7,8 @@ from wxcloudrun.response import make_succ_empty_response, make_succ_response, ma
 from flask import request
 from wxcloudrun.apis.school_search import get_school_structure, search_schools
 from wxcloudrun.apis.analysis import analyze_application
+from wxcloudrun.apis.query_school_majors_or_fxs import query_school_majors_or_fxs
+from wxcloudrun.apis.query_majors_or_fxs import query_majors_or_fxs
 from flask import jsonify
 
 
@@ -80,3 +82,11 @@ def get_school_structure_api():
 @app.route('/api/analyze', methods=['POST'])
 def analyze_application_api():
     return analyze_application()
+
+@app.route('/api/query_school_majors_or_fxs', methods=['POST'])
+def query_school_majors_or_fxs_api():
+    return query_school_majors_or_fxs()
+
+@app.route('/api/query_majors_or_fxs', methods=['POST'])
+def query_majors_or_fxs_api():
+    return query_majors_or_fxs()
