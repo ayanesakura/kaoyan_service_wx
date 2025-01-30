@@ -23,7 +23,7 @@ def query_school_majors_or_fxs():
             'message': '学校名称和查询关键词不能为空'
         })
     
-    datas = [{'collage_name': data['院系名称'], 'major_name': data['专业名称'], 'fx_name': data['方向名称']} 
+    datas = [{'collage_name': data['院系名称'], 'major': data['专业名称'], 'fx': data['方向名称']} 
              for data in SCHOOL_DATAS if data['学校名称'] == school_name and (query in data['专业名称'] or query in data['方向名称'])]
     if not datas:
         return jsonify({

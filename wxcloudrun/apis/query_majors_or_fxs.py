@@ -29,6 +29,6 @@ def query_majors_or_fxs():
         if query in data['专业名称'] or query in data['方向名称']:
             uniq_key = f"{data['专业名称']}-{data['方向名称']}"
             if uniq_key not in saw:
-                datas.append({'collage_name': data['院系名称'], 'major_name': data['专业名称'], 'fx_name': data['方向名称']})
+                datas.append({'collage_name': data['院系名称'], 'major': data['专业名称'], 'fx': data['方向名称']})
             saw.add(uniq_key)
     return jsonify(datas)
