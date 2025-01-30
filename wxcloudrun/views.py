@@ -9,6 +9,7 @@ from wxcloudrun.apis.school_search import get_school_structure, search_schools
 from wxcloudrun.apis.analysis import analyze_application
 from wxcloudrun.apis.query_school_majors_or_fxs import query_school_majors_or_fxs
 from wxcloudrun.apis.query_majors_or_fxs import query_majors_or_fxs
+from wxcloudrun.apis.query_city import query_city
 from flask import jsonify
 
 
@@ -90,3 +91,8 @@ def query_school_majors_or_fxs_api():
 @app.route('/api/query_majors_or_fxs', methods=['POST'])
 def query_majors_or_fxs_api():
     return query_majors_or_fxs()
+
+
+@app.route('/api/query_city', methods=['POST'])
+def query_city_api():
+    return query_city()
