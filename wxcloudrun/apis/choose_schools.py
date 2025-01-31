@@ -36,7 +36,6 @@ def is_target_match(target_info, school_info):
     target_city = target_info.get('city', None)
     target_province = target_info.get('province', None)
     target_school_level = target_info.get('school_level', None)
-
     if target_school is not None:
         target_school_flag = target_school == school_info.get('school_name', '')
     else:
@@ -62,7 +61,7 @@ def is_target_match(target_info, school_info):
 
     ## 学校层次匹配
     if target_school_level is not None:
-        school_level_flag = school_info.get('school_name', '') in city_level_map.get(target_school_level, set())
+        school_level_flag = school_info.get('school_name', '') in city_level_map.get(target_school_level.lower(), set())
     else:
         school_level_flag = True
     
@@ -72,10 +71,11 @@ def is_target_match(target_info, school_info):
 def choose_schools():
     request_data = request.get_json()
     user_info, target_info = request_data.get('user_info', {}), request_data.get('target_info', {})
+    # print(request_data)
     sort_info = request_data.get('sort_info', [])
     # 检查target_info中是否至少有一个字段有值
-    if not any([target_info.get('school'), target_info.get('major'), 
-                target_info.get('city'), target_info.get('school_level')]):
+    school, major, city, school_level = target_info.get('school'), target_info.get('major'), target_info.get('city'), target_info.get('school_level')
+    if not any([school, major, city, school_level]):
         return jsonify({
             'code': 400,
             'message': '目标信息中至少需要填写学校、专业、城市或学校层次其中之一'
@@ -89,7 +89,7 @@ def choose_schools():
 
     return jsonify({
         'code': 200,
-        'data': target_schools
+        'data': target_schools[:3]
     })
 
 
