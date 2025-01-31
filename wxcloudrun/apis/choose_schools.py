@@ -10,7 +10,7 @@ from typing import List, Dict
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 cur_dir = os.path.dirname(cur_dir)
 
-SCHOOL_DATA_PATH = os.path.join(cur_dir, 'resources/rich_fx_flat.json')
+SCHOOL_DATA_PATH = os.path.join(cur_dir, 'resources/rich_fx_flat_v2.json')
 
 SCHOOL_DATAS = loads_json(SCHOOL_DATA_PATH)
 
@@ -49,7 +49,7 @@ def is_target_match(target_info, school_info):
     
     ## 方向匹配
     if target_direction is not None:
-        direction_flag = target_direction == school_info.get('direction', '')
+        direction_flag = target_direction in [d['yjfxmc'] for d in school_info.get('directions', [])] 
     else:
         direction_flag = True
     
