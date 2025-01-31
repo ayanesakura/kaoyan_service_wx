@@ -11,6 +11,7 @@ from wxcloudrun.apis.query_school_majors_or_fxs import query_school_majors_or_fx
 from wxcloudrun.apis.query_majors_or_fxs import query_majors_or_fxs
 from wxcloudrun.apis.query_city import query_city
 from wxcloudrun.apis.choose_schools import choose_schools
+from wxcloudrun.apis.ai_ana import ai_ana
 from flask import jsonify
 
 
@@ -101,3 +102,7 @@ def query_city_api():
 @app.route('/api/choose_schools', methods=['POST'])
 def choose_schools_api():
     return choose_schools()
+
+@app.route('/api/ai_ana', methods=['POST'])
+def ai_ana_api():
+    return ai_ana()
