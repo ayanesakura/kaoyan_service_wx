@@ -18,8 +18,7 @@ class KimiApiClient:
     def __init__(self, api_key=KimiApiKey.MOONSHOT_API_KEY, base_url=KimiApiBaseUrl.BASE_URL, model=KimiApiModel.MODEL_v1_32k):
         self.client = OpenAI(
             api_key=api_key, # 在这里将 MOONSHOT_API_KEY 替换为你从 Kimi 开放平台申请的 API Key
-            base_url=base_url,
-            timeout=60.0
+            base_url=base_url
         )
         self.model = model
     
