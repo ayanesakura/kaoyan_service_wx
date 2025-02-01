@@ -35,7 +35,15 @@ RUN pip config set global.index-url http://mirrors.cloud.tencent.com/pypi/simple
 # 暴露端口。
 # 此处端口必须与「服务设置」-「流水线」以及「手动上传代码包」部署时填写的端口一致，否则会部署失败。
 EXPOSE 80
-RUN export ARK_API_KEY="126b9b49-89ef-4ac3-8921-8c38c93ae943"
+
+# 设置COS环境变量
+# ENV COS_REGION="ap-shanghai" \
+#     COS_BUCKET="7072-prod-4g46sjwd41c4097c-1330319089"
+
+# RUN export ARK_API_KEY="126b9b49-89ef-4ac3-8921-8c38c93ae943"
+RUN apt-get update && apt-get install -y git-lfs && \
+    git lfs install && \
+    git lfs pull
 # 执行启动命令
 # 写多行独立的CMD命令是错误写法！只有最后一行CMD命令会被执行，之前的都会被忽略，导致业务报错。
 # 请参考[Docker官方文档之CMD命令](https://docs.docker.com/engine/reference/builder/#cmd)
