@@ -10,9 +10,6 @@ def init_application():
     time.sleep(2)
     download_file()
 
-# 导出应用实例供gunicorn使用
-application = app
-
 # 启动Flask Web服务
 if __name__ == '__main__':
     # 创建初始化线程

@@ -153,16 +153,5 @@ def download_file():
     except Exception as e:
         logger.error(f"Failed to download file: {str(e)}")
 
-def init_data():
-    # 检查文件是否存在
-    local_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
-    if os.path.exists(local_file_path):
-        try:
-            app.config['SCHOOL_DATAS'] = loads_json(local_file_path)
-            logger.info(f"Successfully loaded existing school data, process id: {os.getpid()}")
-            return
-        except Exception as e:
-            logger.error(f"Failed to load existing school data: {str(e)}")
-    
-    # 如果文件不存在或加载失败，则下载
-    download_file()
+# 这里最后导入views，确保app已经完全初始化
+from wxcloudrun import views

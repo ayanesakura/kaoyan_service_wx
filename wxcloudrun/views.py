@@ -1,6 +1,6 @@
 from datetime import datetime
-from flask import render_template, request
-from run import app
+from flask import render_template, request, jsonify
+from wxcloudrun import app
 from wxcloudrun.dao import delete_counterbyid, query_counterbyid, insert_counter, update_counterbyid
 from wxcloudrun.model import Counters
 from wxcloudrun.response import make_succ_empty_response, make_succ_response, make_err_response
@@ -13,7 +13,6 @@ from wxcloudrun.apis.query_city import query_city
 from wxcloudrun.apis.choose_schools import choose_schools
 from wxcloudrun.apis.ai_ana import ai_ana
 from wxcloudrun.apis.kyys import kyys
-from flask import jsonify
 
 
 @app.route('/')
