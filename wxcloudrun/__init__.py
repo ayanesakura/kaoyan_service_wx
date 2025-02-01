@@ -83,6 +83,7 @@ def get_access_token():
 def download_file():
     try:
         # 获取access_token
+        pid = os.getpid()
         access_token = get_access_token()
         print(access_token)
         if not access_token:
@@ -117,7 +118,6 @@ def download_file():
             headers=headers
         )
         
-        print(response.json())
         if response.status_code != 200:
             logger.error(f"Failed to get download url: {response.text}")
             return
@@ -149,21 +149,11 @@ def download_file():
         with open(local_file_path, 'wb') as f:
             f.write(file_response.content)
             
-        logger.info(f"Successfully downloaded file to {local_file_path}")
-        
-        # 加载数据到应用配置
-        try:
-            app.config['SCHOOL_DATAS'] = loads_json(local_file_path)
-            logger.info("Successfully loaded school data into app config")
-        except Exception as e:
-            logger.error(f"Failed to load school data: {str(e)}")
-        
+        logger.info(f"Successfully downloaded file to {local_file_path}, process id: {pid}")
     except Exception as e:
         logger.error(f"Failed to download file: {str(e)}")
 
-@app.before_request
 def init_data():
-    """在第一个请求之前初始化数据"""
     # 检查文件是否存在
     local_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
     if os.path.exists(local_file_path):
