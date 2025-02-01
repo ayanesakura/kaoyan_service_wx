@@ -152,6 +152,3 @@ def download_file():
         logger.info(f"Successfully downloaded file to {local_file_path}, process id: {pid}")
     except Exception as e:
         logger.error(f"Failed to download file: {str(e)}")
-
-# 这里最后导入views，确保app已经完全初始化
-from wxcloudrun import views
