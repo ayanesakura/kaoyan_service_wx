@@ -1,2 +1,1 @@
-wxcloudrun/resources/rich_fx_flat_v2.json filter=lfs diff=lfs merge=lfs -text
 *.json filter=lfs diff=lfs merge=lfs -text
