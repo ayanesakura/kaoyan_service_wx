@@ -41,9 +41,9 @@ EXPOSE 80
 #     COS_BUCKET="7072-prod-4g46sjwd41c4097c-1330319089"
 
 # RUN export ARK_API_KEY="126b9b49-89ef-4ac3-8921-8c38c93ae943"
-RUN apt-get update && apt-get install -y git-lfs && \
-    git lfs install && \
-    git lfs pull
+# RUN apt-get update && apt-get install -y git-lfs && \
+#     git lfs install && \
+#     git lfs pull
 # 执行启动命令
 # 写多行独立的CMD命令是错误写法！只有最后一行CMD命令会被执行，之前的都会被忽略，导致业务报错。
 # 请参考[Docker官方文档之CMD命令](https://docs.docker.com/engine/reference/builder/#cmd)
