@@ -8,6 +8,7 @@ import logging
 import json
 import requests
 import time
+from wxcloudrun.utils.file_util import loads_json
 # 因MySQLDB不支持Python3，使用pymysql扩展库代替MySQLDB库
 pymysql.install_as_MySQLdb()
 
@@ -144,8 +145,31 @@ def download_file():
             
         logger.info(f"Successfully downloaded file to {local_file_path}")
         
+        # 加载数据到应用配置
+        try:
+            app.config['SCHOOL_DATAS'] = loads_json(local_file_path)
+            logger.info("Successfully loaded school data into app config")
+        except Exception as e:
+            logger.error(f"Failed to load school data: {str(e)}")
+        
     except Exception as e:
         logger.error(f"Failed to download file: {str(e)}")
+
+@app.before_request
+def init_data():
+    """在第一个请求之前初始化数据"""
+    # 检查文件是否存在
+    local_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
+    if os.path.exists(local_file_path):
+        try:
+            app.config['SCHOOL_DATAS'] = loads_json(local_file_path)
+            logger.info("Successfully loaded existing school data")
+            return
+        except Exception as e:
+            logger.error(f"Failed to load existing school data: {str(e)}")
+    
+    # 如果文件不存在或加载失败，则下载
+    download_file()
 
 # 加载控制器
 from wxcloudrun import views

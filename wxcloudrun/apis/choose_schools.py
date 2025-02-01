@@ -3,7 +3,7 @@ import sys
 sys.path.append(os.getcwd())
 from werkzeug.utils import secure_filename
 from wxcloudrun.utils.file_util import loads_json
-from flask import request, jsonify
+from flask import request, jsonify, current_app
 from typing import List, Dict
 import time
 
@@ -88,11 +88,13 @@ def is_target_match(target_info, school_info):
     return target_school_flag and major_flag and direction_flag and city_or_province_flag and school_level_flag
 
 def choose_schools():
-    # 确保数据已加载
-    if SCHOOL_DATAS is None and not load_school_data():
+    global SCHOOL_DATAS
+    # 从应用配置中获取数据
+    SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS')
+    if not SCHOOL_DATAS:
         return jsonify({
             'code': 500,
-            'message': '学校数据加载失败，请稍后重试'
+            'message': '学校数据未初始化，请稍后重试'
         })
 
     request_data = request.get_json()
