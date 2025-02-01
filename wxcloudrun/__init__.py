@@ -18,7 +18,13 @@ logger = logging.getLogger()
 
 # 初始化web应用
 app = Flask(__name__, instance_relative_config=True)
-app.config['DEBUG'] = config.DEBUG
+
+# 加载配置
+app.config.from_object('config')
+
+# 设置SQLAlchemy配置
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -163,16 +169,10 @@ def init_data():
     if os.path.exists(local_file_path):
         try:
             app.config['SCHOOL_DATAS'] = loads_json(local_file_path)
-            logger.info("Successfully loaded existing school data")
+            logger.info(f"Successfully loaded existing school data, process id: {os.getpid()}")
             return
         except Exception as e:
             logger.error(f"Failed to load existing school data: {str(e)}")
     
     # 如果文件不存在或加载失败，则下载
     download_file()
-
-# 加载控制器
-from wxcloudrun import views
-
-# 加载配置
-app.config.from_object('config')

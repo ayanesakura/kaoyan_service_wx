@@ -8,5 +8,4 @@ application = app
 # 启动Flask Web服务
 if __name__ == '__main__':
     # 启动服务
-    print("fuck")
-    app.run(host=sys.argv[1], port=sys.argv[2])
+    app.run(host=sys.argv[1], port=int(sys.argv[2]), debug=False)
