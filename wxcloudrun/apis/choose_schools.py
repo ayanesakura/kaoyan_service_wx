@@ -6,6 +6,8 @@ from wxcloudrun.utils.file_util import loads_json
 from flask import request, jsonify, current_app
 from typing import List, Dict
 import time
+from wxcloudrun.utils.admission_score_card import get_admission_score
+import math
 
 # 加载学校基础数据
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -87,6 +89,19 @@ def is_target_match(target_info, school_info):
     
     return target_school_flag and major_flag and direction_flag and city_or_province_flag and school_level_flag
 
+def calculate_admission_probability(score: float) -> float:
+    """
+    使用 Logistic 函数计算录取概率
+    P = 1 / (1 + e^(-0.1 * (S - 65)))
+    
+    :param score: 评分卡总分
+    :return: 录取概率（0-1之间的浮点数）
+    """
+    try:
+        return 1 / (1 + math.exp(-0.1 * (score - 65)))
+    except:
+        return 0
+
 def choose_schools():
     global SCHOOL_DATAS
     # 从应用配置中获取数据
@@ -100,6 +115,7 @@ def choose_schools():
     request_data = request.get_json()
     user_info, target_info = request_data.get('user_info', {}), request_data.get('target_info', {})
     sort_info = request_data.get('sort_info', [])
+    
     # 检查target_info中是否至少有一个字段有值
     school, major, city, school_level = target_info.get('school'), target_info.get('major'), target_info.get('city'), target_info.get('school_level')
     if not any([school, major, city, school_level]):
@@ -110,9 +126,22 @@ def choose_schools():
     
     target_schools = [s for s in SCHOOL_DATAS if is_target_match(target_info, s)]
 
+    # 计算每个学校的评分和录取概率
+    for school in target_schools:
+        if 'fxs' in school:
+            school.pop('fsx')
+        scores = get_admission_score(user_info, target_info, school)
+        total_score = scores["总分"]  # 从返回的字典中获取总分
+        probability = calculate_admission_probability(total_score)
+        school['scores'] = scores  # 保存所有维度的分数
+        school['admission_probability'] = round(probability * 100, 2)  # 转换为百分比并保留两位小数
+    
+    # 按照录取概率降序排序
+    target_schools.sort(key=lambda x: x['admission_probability'], reverse=True)
+
     return jsonify({
         'code': 200,
-        'data': target_schools[:3]
+        'data': target_schools[:5]
     })
 
 

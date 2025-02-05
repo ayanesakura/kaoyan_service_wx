@@ -1,6 +1,6 @@
 /__pycache__/
 *.pyc
 wxcloudrun/resources/rich_fx_flat.json
-wxcloudrun/resources/rich_fx_flat_v2.json
 .DS_Store
 wxcloudrun/.DS_Store
+wxcloudrun/resources/rich_fx_flat_v2.json

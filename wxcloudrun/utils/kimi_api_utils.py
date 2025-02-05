@@ -11,8 +11,7 @@ class KimiApiBaseUrl:
 
 class KimiApiModel:
     MODEL_v1_32k = "moonshot-v1-32k"
-    MODEL_v1_16k = "moonshot-v1-16k"
-
+    MODEL_v1_8k = "moonshot-v1-8k"
 
 class KimiApiClient:
     def __init__(self, api_key=KimiApiKey.MOONSHOT_API_KEY, base_url=KimiApiBaseUrl.BASE_URL, model=KimiApiModel.MODEL_v1_32k):
