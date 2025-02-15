@@ -37,9 +37,9 @@ def load_school_data():
                 # 更新city_level_map
                 for data in SCHOOL_DATAS:
                     school_name, is_985, is_211 = data['school_name'], data['is_985'], data['is_211']
-                    if is_985:
+                    if is_985 == "1":
                         city_level_map['985'].add(school_name)
-                    if is_211:
+                    if is_211 == "1":
                         city_level_map['211'].add(school_name)
                 return True
         except Exception as e:

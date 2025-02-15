@@ -13,7 +13,7 @@ from wxcloudrun.apis.query_city import query_city
 from wxcloudrun.apis.choose_schools import choose_schools
 from wxcloudrun.apis.ai_ana import ai_ana
 from wxcloudrun.apis.kyys import kyys
-
+from wxcloudrun.apis.choose_school_v2 import choose_schools_v2
 
 @app.route('/')
 def index():
@@ -102,6 +102,10 @@ def query_city_api():
 @app.route('/api/choose_schools', methods=['POST'])
 def choose_schools_api():
     return choose_schools()
+
+@app.route('/api/choose_schools_v2', methods=['POST'])
+def choose_schools_v2_api():
+    return choose_schools_v2()
 
 @app.route('/api/ai_ana', methods=['POST'])
 def ai_ana_api():
