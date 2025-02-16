@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Any
 from loguru import logger
 from wxcloudrun.beans.input_models import UserInfo, TargetInfo, SchoolInfo
 from wxcloudrun.score_card.constants import (
@@ -139,7 +139,7 @@ class LocationScoreCalculator:
             logger.error(f"计算工作城市匹配度时出错: {str(e)}")
             return LOCATION_SCORE_DEFAULTS['工作城市匹配度']
         
-    def calculate_total_score(self, school_info: SchoolInfo) -> Dict[str, float]:
+    def calculate_total_score(self, school_info: SchoolInfo) -> Dict[str, Any]:
         """
         计算总分
         :param school_info: 学校信息
@@ -159,5 +159,14 @@ class LocationScoreCalculator:
             for dimension, score in scores.items()
         )
         
-        scores["总分"] = total_score
-        return scores 
+        return {
+            "总分": total_score,
+            "scores": scores,
+            "details": {
+                "生活成本": {"score": scores["生活成本"]},
+                "家乡匹配度": {"score": scores["家乡匹配度"]},
+                "教育资源": {"score": scores["教育资源"]},
+                "医疗资源": {"score": scores["医疗资源"]},
+                "工作城市匹配度": {"score": scores["工作城市匹配度"]}
+            }
+        } 

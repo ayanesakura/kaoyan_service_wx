@@ -162,4 +162,87 @@ SATISFACTION_SCORE_RANGES = {
     (1.5, 2.0): 40.0,   # 较低满意度
     (1.0, 1.5): 30.0,   # 很低满意度
     (0.0, 1.0): 20.0    # 极低满意度
+}
+
+# 概率等级阈值
+PROBABILITY_LEVELS = {
+    'IMPOSSIBLE': 25,  # <25%
+    'DIFFICULT': 45,  # 25-45%
+    'MODERATE': 75,  # 45-75%
+    'EASY': 95,      # 75-95%
+}
+
+# 专业匹配度分数
+MAJOR_MATCH_SCORES = {
+    'EXACT': 100,    # 完全匹配
+    'IN_DIRECTION': 80,  # 在考研方向中
+    'DIFFERENT': 40  # 不相关专业
+}
+
+# 报录比分数区间
+COMPETITION_RATIO_SCORES = {
+    (0, 3): {'score': 90, 'desc': '竞争较小'},
+    (3, 5): {'score': 70, 'desc': '竞争适中'},
+    (5, 8): {'score': 50, 'desc': '竞争激烈'},
+    (8, 10): {'score': 30, 'desc': '竞争非常激烈'},
+    (10, float('inf')): {'score': 10, 'desc': '竞争极其激烈'}
+}
+
+# 招生规模分数
+ENROLLMENT_SIZE_SCORES = {
+    (50, float('inf')): {'score': 100, 'desc': '招生规模大'},
+    (30, 50): {'score': 80, 'desc': '招生规模中等'},
+    (10, 30): {'score': 60, 'desc': '招生规模一般'},
+    (0, 10): {'score': 30, 'desc': '招生规模小'}
+}
+
+# 备考时间分数 (按天数计算)
+PREP_TIME_SCORES = {
+    (0, 90): {'score': 30, 'desc': '备考时间较短'},      # 0-3个月
+    (90, 180): {'score': 60, 'desc': '备考时间一般'},    # 3-6个月
+    (180, 270): {'score': 80, 'desc': '备考时间充足'},   # 6-9个月
+    (270, 365): {'score': 90, 'desc': '备考时间很充足'},  # 9-12个月
+    (365, float('inf')): {'score': 100, 'desc': '备考时间非常充足'} # 12个月以上
+}
+
+# 英语水平分数
+ENGLISH_LEVEL_SCORES = {
+    'CET6': {'score': 80, 'desc': '已过六级'},
+    'CET4': {'score': 60, 'desc': '已过四级'},
+    'NONE': {'score': 40, 'desc': '未过四六级'}
+}
+
+# 专业排名分数
+MAJOR_RANKING_SCORES = {
+    'TOP10': {'score': 100, 'desc': '专业前10%'},
+    'TOP20': {'score': 80, 'desc': '专业前20%'},
+    'TOP50': {'score': 60, 'desc': '专业前50%'},
+    'OTHER': {'score': 40, 'desc': '专业排名较后'}
+}
+
+# 学校跨度分数
+SCHOOL_GAP_SCORES = {
+    2: {'score': 30, 'desc': '跨度较大'},
+    1: {'score': 60, 'desc': '跨度适中'},
+    0: {'score': 90, 'desc': '基本持平'}
+}
+
+# 年级对应的备考月数
+GRADE_PREP_MONTHS = {
+    '大一': 39,
+    '大二': 27, 
+    '大三': 15,
+    '大四': 4  # 假设9月开学,到12月考试约4个月
+}
+
+# 考研日期配置
+EXAM_DAY = 23  # 每年12月23日
+
+# 专业数据文件路径
+MAJOR_DETAIL_FILE = 'resources/major_detail_flat.json'
+
+# 竞争强度默认值配置
+COMPETITION_DEFAULT_SCORE = {
+    'score': 50,
+    'desc': '无报录比数据'
 } 
