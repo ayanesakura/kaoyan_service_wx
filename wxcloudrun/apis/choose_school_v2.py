@@ -95,6 +95,9 @@ def _filter_schools(target_info: TargetInfo) -> List[SchoolInfo]:
     """
     filtered_schools = []
     
+    # 合并专业和方向为一个集合
+    target_majors_and_directions = set(target_info.majors + target_info.directions)
+    
     for school_data in SCHOOL_DATAS:
         # 检查学校是否在目标城市列表中
         if target_info.school_cities:
@@ -106,9 +109,19 @@ def _filter_schools(target_info: TargetInfo) -> List[SchoolInfo]:
             if not school_in_target_cities:
                 continue
         
-        # 检查专业是否在目标专业列表中
-        if target_info.majors:
-            if school_data['major'] not in target_info.majors:
+        # 检查专业或研究方向是否匹配
+        if target_majors_and_directions:
+            # 获取学校的专业名称和所有研究方向名称
+            school_major = school_data['major']
+            school_directions = [d['yjfxmc'] for d in school_data.get('directions', [])]
+            
+            # 检查是否有任何一个匹配
+            major_direction_match = (
+                school_major in target_majors_and_directions or
+                any(direction in target_majors_and_directions for direction in school_directions)
+            )
+            
+            if not major_direction_match:
                 continue
         
         # 检查学校层次是否符合要求

@@ -68,6 +68,7 @@ class TargetInfo(BaseModel):
     levels: List[str] = Field(default_factory=list, description="学校层次")
     work_cities: List[Area] = Field(default_factory=list, description="考生的意向工作城市")
     weights: List[Weight] = Field(default_factory=list, description="权重列表")
+    directions: List[str] = Field(default_factory=list, description="研究方向")
 
     @validator('levels')
     def validate_levels(cls, v):
@@ -99,7 +100,8 @@ class TargetInfo(BaseModel):
                 "weights": [
                     {"name": "城市", "val": 0.3},
                     {"name": "专业", "val": 0.7}
-                ]
+                ],
+                "directions": ["人工智能", "计算机视觉", "机器学习"]
             }
         }
 
