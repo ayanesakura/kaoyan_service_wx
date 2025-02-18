@@ -163,7 +163,7 @@ def _convert_school_info_to_dict(school_info: SchoolInfo) -> Dict:
         "city": school_info.city
     }
 
-def analyze_schools(user_info: UserInfo, target_info: TargetInfo) -> Dict:
+def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = False) -> Dict:
     """分析学校列表"""
     try:
         # 初始化评分计算器
@@ -199,18 +199,16 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo) -> Dict:
                         'total_score': score_info['total_score']
                     }
                 })
+                
+                # 在debug模式下添加学校详情
+                if debug:
+                    target_school['school_detail'] = _convert_school_info_to_dict(school)
+                
                 school_scores.append(target_school)
             except Exception as e:
                 logger.error(f"计算学校 {school.school_name} 评分时出错: {str(e)}")
                 continue
         
-        # 按总分排序
-        school_scores.sort(key=lambda x: float(x["total_score"]), reverse=True)
-        
-        # 添加排名
-        for i, score in enumerate(school_scores):
-            score["rank"] = i + 1
-            
         # 按录取概率等级分组
         probability_groups = {
             '冲刺': [],  # 25-45%
@@ -229,21 +227,13 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo) -> Dict:
                 probability_groups['保底'].append(score)
         
         # 在每个组内按总分排序并选择前三名
-        recommended_schools = []
-        for level, schools in probability_groups.items():
-            schools.sort(key=lambda x: float(x['total_score']), reverse=True)
-            top_schools = schools[:3]
-            for school in top_schools:
-                school['probability_level'] = level  # 添加概率等级标记
-            recommended_schools.extend(top_schools)
+        for level in probability_groups:
+            probability_groups[level].sort(key=lambda x: float(x['total_score']), reverse=True)
+            probability_groups[level] = probability_groups[level][:3]  # 只保留前三名
         
         return {
             "code": 0,
-            "data": {
-                "probability_groups": probability_groups,
-                "total": len(school_scores),
-                "schools": recommended_schools  # 返回每个组内得分最高的前三所学校
-            },
+            "data": probability_groups,
             "message": "success"
         }
         
@@ -370,13 +360,7 @@ def choose_schools_v2():
         target_info = TargetInfo(**request_data['target_info'])
         debug_mode = request_data.get('debug', False)
         
-        result = analyze_schools(user_info, target_info)
-        
-        # 如果不是debug模式，移除详细信息
-        if not debug_mode and result['code'] == 0:
-            for school in result['data'].get('schools', []):
-                school.pop('dimension_scores', None)
-                school.pop('detailed_scores', None)
+        result = analyze_schools(user_info, target_info, debug_mode)
         
         return jsonify(result)
         
