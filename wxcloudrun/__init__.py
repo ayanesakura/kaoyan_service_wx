@@ -156,3 +156,34 @@ def download_file():
         logger.info(f"Successfully downloaded file to {local_file_path}, process id: {pid}")
     except Exception as e:
         logger.error(f"Failed to download file: {str(e)}")
+
+def init_application():
+    time.sleep(2)
+    download_file()  # 文件下载
+    # 加载数据到配置
+    json_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
+    
+    # 等待文件真正存在
+    max_retries = 10
+    retry_count = 0
+    while not os.path.exists(json_file_path) and retry_count < max_retries:
+        time.sleep(1)
+        retry_count += 1
+        
+    # 只有在文件存在时才进行数据加载
+    if os.path.exists(json_file_path):
+        try:
+            school_data = loads_json(json_file_path)
+            app.config['SCHOOL_DATAS'] = school_data
+        except Exception as e:
+            logger.error(f"加载学校数据失败: {str(e)}")
+
+def is_data_ready():
+    return bool(app.config.get('SCHOOL_DATAS'))
+
+def choose_schools_v2():
+    if not is_data_ready():
+        return jsonify({
+            "code": -1,
+            "message": "系统初始化中,请稍后重试"
+        })
