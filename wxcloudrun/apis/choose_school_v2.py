@@ -431,7 +431,17 @@ def _convert_to_target_school(school_info: SchoolInfo, score_info: Dict) -> Dict
                     year_data['科目3'] = subject.get('score', 0)
                 elif '科四' in subject.get('subject', ''):
                     year_data['科目4'] = subject.get('score', 0)
-            fsx_score.append(year_data)
+            
+            # 检查是否包含null或NaN
+            has_invalid_score = False
+            for score in year_data.values():
+                if score is None or (isinstance(score, float) and str(score).lower() == 'nan'):
+                    has_invalid_score = True
+                    break
+            
+            # 只有当所有分数都有效时才添加数据
+            if not has_invalid_score:
+                fsx_score.append(year_data)
         except Exception as e:
             logger.error(f"处理分数线数据时出错: {str(e)}")
             continue
