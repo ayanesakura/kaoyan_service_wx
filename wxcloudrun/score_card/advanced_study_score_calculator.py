@@ -1,6 +1,6 @@
 from typing import Dict, List, Any, Tuple
 from loguru import logger
-from wxcloudrun.score_card.constants import SCHOOL_LEVELS
+from wxcloudrun.score_card.constants import SCHOOL_LEVELS, ADVANCED_STUDY_WEIGHTS, SCORE_LEVELS
 from wxcloudrun.apis.choose_schools import city_level_map, load_school_data
 from wxcloudrun.beans.input_models import UserInfo, TargetInfo, SchoolInfo
 import numpy as np
@@ -97,7 +97,7 @@ def _calculate_values(employment_data: Dict[str, List[Dict]]) -> Tuple[Dict[str,
             growth_rates = []
             for i in range(1, len(rates)):
                 if rates[i-1] > 0:
-                    growth_rate = ((rates[i] - rates[i-1]) / rates[i-1]) * 100
+                    growth_rate = ((rates[i] - rates[i-1]) / rates[i-1]) * 100 if rates[i] > 0 else 0
                     growth_rates.append(growth_rate)
                     all_values['升学率增长'].append(growth_rate)
         
@@ -182,46 +182,65 @@ class AdvancedStudyScoreCalculator:
         self.target_info = target_info
         self.employment_data = EMPLOYMENT_DATA  # 在实例中保存就业数据的引用
         
-    def calculate_total_score(self, school: SchoolInfo, years_data: List[Dict]) -> Dict[str, Any]:
-        """
-        计算总评分
-        :param school: 学校信息
-        :param years_data: 学校的年度就业数据列表
-        :return: 评分结果
-        """
-        try:
-            # 计算各维度得分
-            rate_score = self._calculate_rate_score(school, years_data)
-            number_score = self._calculate_number_score(school, years_data)
-            growth_score = self._calculate_growth_score(school, years_data)
-            quality_score = self._calculate_quality_score(school, years_data)
-            
-            # 计算总分（各维度权重相等）
-            total_score = (rate_score + number_score + growth_score + quality_score) / 4
-            
-            return {
-                "总分": total_score,
-                "升学率得分": rate_score,
-                "升学人数得分": number_score,
-                "升学增长得分": growth_score,
-                "升学质量得分": quality_score,
-                "详情": {
-                    "rate": self._get_rate_details(school, years_data),
-                    "number": self._get_number_details(school, years_data),
-                    "growth": self._get_growth_details(school, years_data),
-                    "quality": self._get_quality_details(school, years_data)
-                }
+    def _get_description(self, dimension: str, score: float) -> str:
+        """获取维度描述"""
+        if score >= SCORE_LEVELS['high']['threshold']:
+            return SCORE_LEVELS['high']['descriptions'][dimension]
+        elif score >= SCORE_LEVELS['medium']['threshold']:
+            return SCORE_LEVELS['medium']['descriptions'][dimension]
+        return SCORE_LEVELS['low']['descriptions'][dimension]
+
+    def calculate_total_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict[str, Any]:
+        """计算总分"""
+        # 计算各维度得分
+        rate = self.calculate_rate_score(school_info, employment_data)
+        number = self.calculate_number_score(school_info, employment_data)
+        growth = self.calculate_growth_score(school_info, employment_data)
+        quality = self.calculate_quality_score(school_info, employment_data)
+        
+        dimension_scores = [
+            {
+                "name": "升学率",
+                "score": rate['score'],
+                "source": rate['source'],
+                "weight": ADVANCED_STUDY_WEIGHTS["升学率"],
+                "description": self._get_description("升学率", rate['score']),
+                "weighted_score": rate['score'] * ADVANCED_STUDY_WEIGHTS["升学率"]
+            },
+            {
+                "name": "升学人数",
+                "score": number['score'],
+                "source": number['source'],
+                "weight": ADVANCED_STUDY_WEIGHTS["升学人数"],
+                "description": self._get_description("升学人数", number['score']),
+                "weighted_score": number['score'] * ADVANCED_STUDY_WEIGHTS["升学人数"]
+            },
+            {
+                "name": "升学率增长",
+                "score": growth['score'],
+                "source": growth['source'],
+                "weight": ADVANCED_STUDY_WEIGHTS["升学率增长"],
+                "description": self._get_description("升学率增长", growth['score']),
+                "weighted_score": growth['score'] * ADVANCED_STUDY_WEIGHTS["升学率增长"]
+            },
+            {
+                "name": "留学质量",
+                "score": quality['score'],
+                "source": quality['source'],
+                "weight": ADVANCED_STUDY_WEIGHTS["留学质量"],
+                "description": self._get_description("留学质量", quality['score']),
+                "weighted_score": quality['score'] * ADVANCED_STUDY_WEIGHTS["留学质量"]
             }
-        except Exception as e:
-            logger.error(f"计算升学评分时出错: {str(e)}")
-            return {
-                "总分": 0,
-                "升学率得分": 0,
-                "升学人数得分": 0,
-                "升学增长得分": 0,
-                "升学质量得分": 0,
-                "详情": {}
-            }
+        ]
+        
+        # 计算总分
+        total_score = sum(score["weighted_score"] for score in dimension_scores)
+        
+        return {
+            "dimension_scores": dimension_scores,
+            "total_score": total_score,
+            "school_name": school_info.school_name
+        }
 
     def _get_default_value(self, school: SchoolInfo, metric: str) -> float:
         """获取指定指标的默认值"""
@@ -260,267 +279,144 @@ class AdvancedStudyScoreCalculator:
         else:
             return '其他'
 
-    def _calculate_rate_score(self, school: SchoolInfo, years_data: List[Dict]) -> float:
-        """
-        计算升学率得分
-        1. 获取最近一年数据，如果缺失则用历史均值填充
-        2. 如果完全没有数据，使用同层级学校的中位数
-        3. 计算百分位得分
-        """
+    def calculate_rate_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict:
+        """计算升学率得分"""
         try:
-            latest_rate = None
-            historical_rates = []
-            
-            sorted_years_data = sorted(years_data, key=lambda x: x.get('year', ''), reverse=True)
-            
-            for year_data in sorted_years_data:
-                deep_info = year_data.get('employment_data', {}).get('深造情况', {})
-                if deep_info and '总深造率' in deep_info:
-                    try:
-                        # 处理百分号
-                        rate_str = str(deep_info['总深造率']).strip('%')
-                        rate = float(rate_str)
-                        if latest_rate is None:
-                            latest_rate = rate
-                        historical_rates.append(rate)
-                    except (ValueError, TypeError):
-                        continue
-            
-            # 如果最近一年数据缺失，使用历史均值
-            if latest_rate is None and historical_rates:
-                latest_rate = sum(historical_rates) / len(historical_rates)
-            
-            # 如果完全没有数据，使用同层级中位数
-            if latest_rate is None:
-                level = self._get_school_level(school)
-                latest_rate = self._get_level_median_rate(level)
-            
-            if latest_rate is None:  # 如果仍然没有值，返回0分
-                return 0
-                
-            # 计算百分位得分
-            all_rates = self._get_all_schools_latest_rates()
-            if not all_rates:
-                return 0
-                
-            # 计算百分位
-            percentile = sum(1 for x in all_rates if x <= latest_rate) / len(all_rates) * 100
-            return percentile
-            
-        except Exception as e:
-            logger.error(f"计算升学率得分时出错: {str(e)}")
-            return 0
-
-    def _get_level_median_rate(self, level: str) -> float:
-        """获取指定层级学校的升学率中位数"""
-        try:
-            rates = []
-            for school_name, years_data in self.employment_data.items():  # 使用实例变量
-                if self._get_school_level_from_name(school_name) == level:
-                    # 获取最近一年的有效升学率
-                    sorted_years = sorted(years_data, key=lambda x: x.get('year', ''), reverse=True)
-                    for year_data in sorted_years:
-                        deep_info = year_data.get('employment_data', {}).get('深造情况', {})
-                        if deep_info and '总深造率' in deep_info:
-                            try:
-                                rate = float(deep_info['总深造率'])
-                                rates.append(rate)
-                                break  # 只取最近一年的有效值
-                            except (ValueError, TypeError):
-                                continue
-            
-            return median(rates) if rates else None
-            
-        except Exception as e:
-            logger.error(f"获取层级{level}的中位数时出错: {str(e)}")
-            return None
-            
-    def _get_all_schools_latest_rates(self) -> List[float]:
-        """获取所有学校最近一年的升学率"""
-        try:
-            rates = []
-            for school_name, years_data in self.employment_data.items():  # 使用实例变量
-                # 获取最近一年的有效升学率
-                sorted_years = sorted(years_data, key=lambda x: x.get('year', ''), reverse=True)
-                latest_rate = None
-                historical_rates = []
-                
-                for year_data in sorted_years:
+            if employment_data:
+                rates = []
+                for year_data in employment_data:
                     deep_info = year_data.get('employment_data', {}).get('深造情况', {})
                     if deep_info and '总深造率' in deep_info:
                         try:
-                            rate = float(deep_info['总深造率'])
-                            if latest_rate is None:  # 第一个有效值作为最近一年的值
-                                latest_rate = rate
-                            historical_rates.append(rate)
+                            rate_str = str(deep_info['总深造率']).strip('%')
+                            rate = float(rate_str)
+                            rates.append(rate)
                         except (ValueError, TypeError):
                             continue
-                
-                # 如果最近一年数据缺失，使用历史均值
-                if latest_rate is None and historical_rates:
-                    latest_rate = sum(historical_rates) / len(historical_rates)
-                
-                # 如果有值则添加到列表
-                if latest_rate is not None:
-                    rates.append(latest_rate)
             
-            return rates
+                if rates:
+                    avg_rate = sum(rates) / len(rates)
+                    return {
+                        'score': min(100, avg_rate * 2),  # 升学率乘以2转换为百分制
+                        'source': 'real'
+                    }
             
+            # 使用默认值
+            return {
+                'score': ADVANCED_STUDY_DEFAULTS['升学率'],
+                'source': 'default'
+            }
         except Exception as e:
-            logger.error(f"获取所有学校升学率时出错: {str(e)}")
-            return []
+            logger.error(f"计算升学率得分时出错: {str(e)}")
+            return {
+                'score': ADVANCED_STUDY_DEFAULTS['升学率'],
+                'source': 'default'
+            }
 
-    def _calculate_number_score(self, school: SchoolInfo, years_data: List[Dict]) -> float:
-        """
-        计算升学人数得分
-        1. 获取最近一年数据，如果缺失则用历史均值填充
-        2. 如果完全没有数据，使用所有学校的中位数
-        3. 计算百分位得分
-        """
+    def calculate_number_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict:
+        """计算升学人数得分"""
         try:
-            # 获取最近一年的升学人数
-            latest_number = None
-            historical_numbers = []
+            if employment_data:
+                numbers = []
+                for year_data in employment_data:
+                    deep_info = year_data.get('employment_data', {}).get('深造情况', {})
+                    if deep_info:
+                        total = (deep_info.get('国内升学人数', 0) or 0) + (deep_info.get('出国留学人数', 0) or 0)
+                        if total > 0:
+                            numbers.append(total)
             
-            # 按年份排序
-            sorted_years_data = sorted(years_data, key=lambda x: x.get('year', ''), reverse=True)
+                if numbers:
+                    avg_number = sum(numbers) / len(numbers)
+                    return {
+                        'score': min(100, avg_number / 2),  # 每2人1分，最高100分
+                        'source': 'real'
+                    }
             
-            for year_data in sorted_years_data:
-                deep_info = year_data.get('employment_data', {}).get('深造情况', {})
-                if deep_info:
-                    total = (deep_info.get('国内升学人数', 0) or 0) + (deep_info.get('出国留学人数', 0) or 0)
-                    if total > 0:
-                        if latest_number is None:  # 第一个有效值作为最近一年的值
-                            latest_number = total
-                        historical_numbers.append(total)
-            
-            # 如果最近一年数据缺失，使用历史均值
-            if latest_number is None and historical_numbers:
-                latest_number = sum(historical_numbers) / len(historical_numbers)
-            
-            # 如果完全没有数据，使用所有学校的中位数
-            if latest_number is None:
-                latest_number = self._get_all_schools_median_number()
-            
-            if latest_number is None:  # 如果仍然没有值，返回0分
-                return 0
-                
-            # 计算百分位得分
-            all_numbers = self._get_all_schools_latest_numbers()
-            if not all_numbers:
-                return 0
-                
-            # 计算百分位
-            percentile = sum(1 for x in all_numbers if x <= latest_number) / len(all_numbers) * 100
-            return percentile
-            
+            # 使用默认值
+            return {
+                'score': ADVANCED_STUDY_DEFAULTS['升学人数'],
+                'source': 'default'
+            }
         except Exception as e:
             logger.error(f"计算升学人数得分时出错: {str(e)}")
-            return 0
+            return {
+                'score': ADVANCED_STUDY_DEFAULTS['升学人数'],
+                'source': 'default'
+            }
 
-    def _calculate_growth_score(self, school: SchoolInfo, years_data: List[Dict]) -> float:
-        """
-        计算升学率增长得分
-        1. 计算最近三年的复合增长率
-        2. 如果数据不足，使用所有学校的平均增长率
-        3. 计算百分位得分
-        """
+    def calculate_growth_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict:
+        """计算升学率增长得分"""
         try:
-            # 获取最近三年的升学率数据
-            rates_by_year = {}
-            for year_data in years_data:
-                year = year_data.get('year', '')
-                deep_info = year_data.get('employment_data', {}).get('深造情况', {})
-                if deep_info and '总深造率' in deep_info:
-                    try:
-                        rate = float(deep_info['总深造率'])
-                        rates_by_year[year] = rate
-                    except (ValueError, TypeError):
-                        continue
+            if employment_data:
+                rates = []
+                for year_data in employment_data:
+                    deep_info = year_data.get('employment_data', {}).get('深造情况', {})
+                    if deep_info and '总深造率' in deep_info:
+                        try:
+                            rate_str = str(deep_info['总深造率']).strip('%')
+                            rate = float(rate_str)
+                            rates.append(rate)
+                        except (ValueError, TypeError):
+                            continue
             
-            # 按年份排序
-            sorted_years = sorted(rates_by_year.keys(), reverse=True)
-            if len(sorted_years) >= 3:
-                latest_rate = rates_by_year[sorted_years[0]]
-                oldest_rate = rates_by_year[sorted_years[2]]
-                
-                if oldest_rate > 0:  # 避免除以零
-                    # 计算三年复合增长率
-                    growth_rate = (pow(latest_rate / oldest_rate, 1/3) - 1) * 100
-                else:
-                    growth_rate = 0
-            else:
-                # 如果数据不足三年，使用所有学校的平均增长率
-                growth_rate = self._get_all_schools_avg_growth()
+            if len(rates) >= 2:
+                growth_rates = []
+                for i in range(1, len(rates)):
+                    if rates[i-1] > 0:
+                        growth_rate = ((rates[i] - rates[i-1]) / rates[i-1]) * 100
+                        growth_rates.append(growth_rate)
             
-            if growth_rate is None:  # 如果无法计算增长率，返回0分
-                return 0
-                
-            # 计算百分位得分
-            all_growth_rates = self._get_all_schools_growth_rates()
-            if not all_growth_rates:
-                return 0
-                
-            # 计算百分位
-            percentile = sum(1 for x in all_growth_rates if x <= growth_rate) / len(all_growth_rates) * 100
-            return percentile
-            
+            if growth_rates:
+                avg_growth = sum(growth_rates) / len(growth_rates)
+                return {
+                    'score': min(100, max(0, 50 + avg_growth * 10)),  # 基准50分，每增长1%加10分
+                    'source': 'calculated'
+                }
+        
+            # 使用默认值
+            return {
+                'score': ADVANCED_STUDY_DEFAULTS['升学率增长'],
+                'source': 'default'
+            }
         except Exception as e:
             logger.error(f"计算升学率增长得分时出错: {str(e)}")
-            return 0
+            return {
+                'score': ADVANCED_STUDY_DEFAULTS['升学率增长'],
+                'source': 'default'
+            }
 
-    def _calculate_quality_score(self, school: SchoolInfo, years_data: List[Dict]) -> float:
-        """
-        计算升学质量得分（美国留学占比）
-        1. 计算最近一年的美国留学占比
-        2. 如果缺失则用历史均值填充
-        3. 如果完全没有数据，使用所有学校的中位数
-        4. 计算百分位得分
-        """
+    def calculate_quality_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict:
+        """计算留学质量得分"""
         try:
-            latest_ratio = None
-            historical_ratios = []
+            if employment_data:
+                quality_scores = []
+                for year_data in employment_data:
+                    deep_info = year_data.get('employment_data', {}).get('深造情况', {})
+                    if deep_info:
+                        abroad_total = deep_info.get('出国留学人数', 0) or 0
+                        us_total = deep_info.get('美国留学人数', 0) or 0
+                        if abroad_total > 0:
+                            us_ratio = (us_total / abroad_total) * 100
+                            quality_scores.append(us_ratio)
             
-            sorted_years_data = sorted(years_data, key=lambda x: x.get('year', ''), reverse=True)
-            
-            for year_data in sorted_years_data:
-                study_abroad = year_data.get('employment_data', {}).get('就业流向', {}).get('留学国家', [])
-                if study_abroad:
-                    for country in study_abroad:
-                        if country.get('国家') == '美国':
-                            try:
-                                # 处理百分号
-                                ratio_str = str(country['占比']).strip('%')
-                                ratio = float(ratio_str) / 100  # 转换为小数
-                                if latest_ratio is None:
-                                    latest_ratio = ratio
-                                historical_ratios.append(ratio)
-                            except (ValueError, TypeError):
-                                continue
-            
-            # 如果最近一年数据缺失，使用历史均值
-            if latest_ratio is None and historical_ratios:
-                latest_ratio = sum(historical_ratios) / len(historical_ratios)
-            
-            # 如果完全没有数据，使用所有学校的中位数
-            if latest_ratio is None:
-                latest_ratio = self._get_all_schools_median_quality()
-            
-            if latest_ratio is None:  # 如果仍然没有值，返回0分
-                return 0
-                
-            # 计算百分位得分
-            all_ratios = self._get_all_schools_latest_quality()
-            if not all_ratios:
-                return 0
-                
-            # 计算百分位
-            percentile = sum(1 for x in all_ratios if x <= latest_ratio) / len(all_ratios) * 100
-            return percentile
-            
+            if quality_scores:
+                avg_quality = sum(quality_scores) / len(quality_scores)
+                return {
+                    'score': min(100, avg_quality),  # 美国留学占比作为得分
+                    'source': 'real'
+                }
+        
+            # 使用默认值
+            return {
+                'score': ADVANCED_STUDY_DEFAULTS['留学质量'],
+                'source': 'default'
+            }
         except Exception as e:
-            logger.error(f"计算升学质量得分时出错: {str(e)}")
-            return 0
+            logger.error(f"计算留学质量得分时出错: {str(e)}")
+            return {
+                'score': ADVANCED_STUDY_DEFAULTS['留学质量'],
+                'source': 'default'
+            }
 
     def _get_rate_details(self, school: SchoolInfo, years_data: List[Dict]) -> Dict:
         """获取升学率详情"""

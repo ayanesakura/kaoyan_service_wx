@@ -2,11 +2,11 @@ import json
 from typing import List, Dict, Any
 from loguru import logger
 from flask import request, jsonify, current_app
-from wxcloudrun.beans.input_models import UserInfo, TargetInfo, SchoolInfo
+from wxcloudrun.beans.input_models import UserInfo, TargetInfo, SchoolInfo, Area
 from wxcloudrun.score_card.admission_score_calculator import AdmissionScoreCalculator
 from wxcloudrun.score_card.location_score_calculator import LocationScoreCalculator
 from wxcloudrun.score_card.major_score_calculator import MajorScoreCalculator
-from wxcloudrun.score_card.constants import PROBABILITY_LEVELS
+from wxcloudrun.score_card.constants import PROBABILITY_LEVELS, SCORE_CARD_WEIGHTS
 from wxcloudrun.apis.choose_schools import SCHOOL_DATAS, load_school_data, city_level_map
 from wxcloudrun.score_card.advanced_study_score_calculator import AdvancedStudyScoreCalculator, init_default_values
 
@@ -163,80 +163,50 @@ def _convert_school_info_to_dict(school_info: SchoolInfo) -> Dict:
         "city": school_info.city
     }
 
-def analyze_schools(user_info: UserInfo, target_info: TargetInfo) -> Dict[str, Any]:
-    """分析学校接口"""
+def analyze_schools(user_info: UserInfo, target_info: TargetInfo) -> Dict:
+    """分析学校列表"""
     try:
-        # 获取符合条件的学校
-        schools = _filter_schools(target_info)
-        if not schools:
-            logger.warning("未找到符合条件的学校")
-            return {
-                "code": 0,
-                "data": {
-                    "schools": [],
-                    "total": 0,
-                    "school_details": []
-                },
-                "message": "未找到符合条件的学校"
-            }
-            
-        # 初始化学校选择器
+        # 初始化评分计算器
         school_chooser = SchoolChooser(user_info, target_info)
         
-        # 计算每所学校的综合得分
+        # 获取所有符合条件的学校
+        schools = _filter_schools(target_info)
+        logger.info(f"找到 {len(schools)} 所候选学校")
+        
+        # 计算每所学校的得分
         school_scores = []
-        school_map = {}
-        score_cards = {}
-        
-        # 初始化升学评分计算器
-        advanced_study_calculator = None
-        try:
-            advanced_study_calculator = AdvancedStudyScoreCalculator(user_info, target_info)
-        except Exception as e:
-            logger.error(f"初始化升学评分计算器失败: {str(e)}")
-        
         for school in schools:
             try:
-                # 计算综合得分
-                school_score = school_chooser._calculate_school_score(school)
+                # 计算学校评分
+                score_info = school_chooser._calculate_school_score(school)
                 
-                # 安全地获取评分卡详情
-                location_score = school_score.get('location_score', {})
-                major_score = school_score.get('major_score', {})
+                # 获取各评分卡得分
+                location_score = school_chooser.location_calculator.calculate_total_score(school)
+                major_score = school_chooser.major_calculator.calculate_total_score(school)
+                advanced_study_score = school_chooser.advanced_calculator.calculate_total_score(
+                    school, 
+                    EMPLOYMENT_DATA.get(school.school_name, [])
+                )
                 
-                # 存储评分卡详情
-                score_cards[f"{school.school_name}-{school.major}"] = {
-                    "location_card": {
-                        "scores": location_score.get('scores', {}),
-                        "details": location_score.get('details', {})
-                    },
-                    "major_card": {
-                        "scores": major_score.get('scores', {}),
-                        "details": major_score.get('details', {})
+                # 转换为目标格式
+                target_school = _convert_to_target_school(school, {
+                    'score_info': {
+                        'score_card': {
+                            'location_card': location_score,
+                            'major_card': major_score,
+                            'advanced_study_card': advanced_study_score
+                        },
+                        'probability': score_info['probability'],
+                        'total_score': score_info['total_score']
                     }
-                }
-                
-                # 添加升学评分卡（如果可用）
-                if advanced_study_calculator:
-                    try:
-                        advanced_study_score = advanced_study_calculator.calculate_total_score(
-                            school,
-                            EMPLOYMENT_DATA.get(school.school_name, [])
-                        )
-                        score_cards[f"{school.school_name}-{school.major}"]["advanced_study_card"] = advanced_study_score
-                    except Exception as e:
-                        logger.error(f"计算学校 {school.school_name} 升学评分时出错: {str(e)}")
-                
-                school_scores.append(school_score)
-                school_map[f"{school.school_name}-{school.major}"] = (school, school_score['total_score'])
-                
+                })
+                school_scores.append(target_school)
             except Exception as e:
                 logger.error(f"计算学校 {school.school_name} 评分时出错: {str(e)}")
-                logger.exception(e)  # 添加详细错误信息
                 continue
         
         # 按总分排序
-        school_scores.sort(key=lambda x: x["total_score"], reverse=True)
+        school_scores.sort(key=lambda x: float(x["total_score"]), reverse=True)
         
         # 添加排名
         for i, score in enumerate(school_scores):
@@ -251,66 +221,29 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo) -> Dict[str, A
         
         # 将学校分到不同概率组
         for score in school_scores:
-            probability = score.get('probability', 0)  # 使用get方法，提供默认值
+            probability = float(score['admission_probability'].rstrip('%'))  # 移除百分号并转换为浮点数
             if PROBABILITY_LEVELS['IMPOSSIBLE'] <= probability < PROBABILITY_LEVELS['DIFFICULT']:
                 probability_groups['冲刺'].append(score)
             elif PROBABILITY_LEVELS['DIFFICULT'] <= probability < PROBABILITY_LEVELS['MODERATE']:
                 probability_groups['稳妥'].append(score)
             elif PROBABILITY_LEVELS['MODERATE'] <= probability < PROBABILITY_LEVELS['EASY']:
                 probability_groups['保底'].append(score)
-            else:
-                logger.warning(f"学校 {score['school_name']} 的录取概率 {probability} 不在任何分组范围内")
         
         # 在每个组内按总分排序并选择前三名
-        for level in probability_groups:
-            probability_groups[level].sort(key=lambda x: x['total_score'], reverse=True)
-            probability_groups[level] = probability_groups[level][:3]
-        
-        # 获取所有组的学校详细信息
-        school_details = []
+        recommended_schools = []
         for level, schools in probability_groups.items():
-            for score in schools:
-                key = f"{score['school_name']}-{score.get('major', '')}"
-                if key in school_map:
-                    school_info = school_map[key][0]  # 获取SchoolInfo对象
-                    # 将SchoolInfo对象转换为字典，并添加评分卡信息
-                    school_detail = {
-                        "probability_level": level,  # 添加概率等级信息
-                        "school_info": _convert_school_info_to_dict(school_info),  # 转换为字典
-                        "score_info": {  # 将其他信息放在score_info下
-                            "school_name": school_info.school_name,
-                            "school_code": school_info.school_code,
-                            "is_985": school_info.is_985,
-                            "is_211": school_info.is_211,
-                            "departments": school_info.departments,
-                            "major": school_info.major,
-                            "major_code": school_info.major_code,
-                            "blb": school_info.blb,
-                            "fsx": school_info.fsx,
-                            "directions": school_info.directions,
-                            "province": school_info.province,
-                            "city": school_info.city,
-                            # 添加评分卡信息
-                            "score_card": score_cards.get(key, {}),
-                            # 添加就业数据
-                            "jy": EMPLOYMENT_DATA.get(school_info.school_name, []),
-                            # 添加升学评分卡
-                            "advanced_study_card": score_cards.get(key, {}).get("advanced_study_card", {}),
-                            # 添加得分和概率信息
-                            "total_score": score['total_score'],
-                            "probability": score['probability']
-                        }
-                    }
-                    school_details.append(school_detail)
-            
-        logger.info(f"完成 {len(school_scores)} 所学校的评分计算，按概率等级分组获取推荐学校")
+            schools.sort(key=lambda x: float(x['total_score']), reverse=True)
+            top_schools = schools[:3]
+            for school in top_schools:
+                school['probability_level'] = level  # 添加概率等级标记
+            recommended_schools.extend(top_schools)
         
         return {
             "code": 0,
             "data": {
-                "probability_groups": probability_groups,  # 按概率等级分组的学校得分
+                "probability_groups": probability_groups,
                 "total": len(school_scores),
-                "school_details": school_details  # 返回包含SchoolInfo和评分信息的列表
+                "schools": recommended_schools  # 返回每个组内得分最高的前三所学校
             },
             "message": "success"
         }
@@ -333,6 +266,7 @@ class SchoolChooser:
         self.admission_calculator = AdmissionScoreCalculator(user_info, target_info)
         self.location_calculator = LocationScoreCalculator(user_info, target_info)
         self.major_calculator = MajorScoreCalculator(user_info, target_info)
+        self.advanced_calculator = AdvancedStudyScoreCalculator(user_info, target_info)
         
     def _get_weight(self, name: str) -> float:
         """获取指定维度的权重"""
@@ -356,8 +290,8 @@ class SchoolChooser:
         # 计算加权总分
         total_score = (
             admission_score['total_score'] * admission_weight +
-            location_score['总分'] * location_weight +
-            major_score['总分'] * major_weight
+            location_score['total_score'] * location_weight +
+            major_score['total_score'] * major_weight
         )
         
         return {
@@ -440,4 +374,67 @@ def choose_schools_v2():
             "code": -1,
             "data": None,
             "message": str(e)
-        }) 
+        })
+
+def _calculate_school_score(score_card: Dict, admission_info: Dict) -> float:
+    """计算学校总评分"""
+    # 计算评分卡总分
+    card_total_score = 0
+    for card_name, weight in SCORE_CARD_WEIGHTS.items():
+        card = score_card.get(card_name, {})
+        score = card.get('total_score', 0)
+        card_total_score += score * weight
+    
+    return card_total_score
+
+def _convert_to_target_school(school_info: SchoolInfo, score_info: Dict) -> Dict:
+    """将学校信息转换为目标格式"""
+    score_card = score_info['score_info']['score_card']
+    admission_info = score_info['score_info']
+    
+    # 获取学校层级
+    levels = []
+    if school_info.is_985 == "1":
+        levels.append("985")
+    if school_info.is_211 == "1":
+        levels.append("211")
+    if school_info.school_name in city_level_map.get('c9', set()):
+        levels.append("C9")
+        
+    # 处理报录比数据
+    blb_score = {}
+    for blb in school_info.blb:
+        try:
+            year = blb.get('year')
+            if year:
+                blb_score[str(year)] = blb.get('blb', '0%')
+        except:
+            continue
+            
+    return {
+        "school_name": school_info.school_name,
+        "levels": levels,
+        "city": school_info.city,
+        "major_name": school_info.major,
+        "major_code": school_info.major_code,
+        "admission_probability": f"{admission_info['probability']}%",
+        "total_score": str(_calculate_school_score(score_card, admission_info)),
+        "location_score": score_card.get('location_card', {
+            "dimension_scores": [],
+            "total_score": 0,
+            "school_name": school_info.school_name
+        }),
+        "major_score": score_card.get('major_card', {
+            "dimension_scores": [],
+            "total_score": 0,
+            "school_name": school_info.school_name
+        }),
+        "sx_score": score_card.get('advanced_study_card', {
+            "dimension_scores": [],
+            "total_score": 0,
+            "school_name": school_info.school_name
+        }),
+        "blb_score": blb_score,
+        "fsx_score": score_info.get('fsx_score', {}),
+        "nlqrs": score_info.get('nlqrs', 0)
+    } 

@@ -1,19 +1,22 @@
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Any
 from enum import Enum
-from ..beans.input_models import UserInfo, TargetInfo, SchoolInfo
+from ..beans.input_models import UserInfo, TargetInfo, SchoolInfo, Area
 from .constants import (
     SCORE_WEIGHTS, PROBABILITY_LEVELS, MAJOR_MATCH_SCORES,
     COMPETITION_RATIO_SCORES, ENROLLMENT_SIZE_SCORES,
     PREP_TIME_SCORES, ENGLISH_LEVEL_SCORES,
     MAJOR_RANKING_SCORES, SCHOOL_GAP_SCORES,
     GRADE_PREP_MONTHS, EXAM_DAY, MAJOR_DETAIL_FILE,
-    COMPETITION_DEFAULT_SCORE
+    COMPETITION_DEFAULT_SCORE,
+    ADMISSION_SCORE_WEIGHTS,
+    ADMISSION_SCORE_DEFAULTS
 )
 import math
 from datetime import datetime, date
 import calendar
+from loguru import logger
 
 # 在模块级别加载专业数据
 def load_major_details() -> Dict:
@@ -87,99 +90,140 @@ class AdmissionScoreCalculator:
 
     def calculate_prep_time_score(self) -> DimensionScore:
         """计算备考时间得分"""
-        current_date = datetime.now()
-        grade = self.user_info.grade
-        current_year = current_date.year
-        
-        # 根据年级判断考研年份
-        if "大四" in grade or "应届" in grade:
-            exam_year = current_year
-        elif "大三" in grade:
-            exam_year = current_year + 1
-        elif "大二" in grade:
-            exam_year = current_year + 2
-        elif "大一" in grade:
-            exam_year = current_year + 3
-        else:  # 默认按最近一次考研计算
-            exam_year = current_year
-        
-        # 考研时间固定为12月23日
-        exam_date = datetime(exam_year, 12, EXAM_DAY)
-        
-        # 如果当前日期已经过了今年的考研时间，就算下一年的
-        if current_date > exam_date:
-            exam_date = datetime(exam_year + 1, 12, EXAM_DAY)
-        
-        # 计算备考天数
-        days_until_exam = (exam_date - current_date).days
-        
-        # 根据天数确定分数区间
-        for (min_days, max_days), score_info in PREP_TIME_SCORES.items():
-            if min_days <= days_until_exam < max_days:
+        try:
+            current_date = datetime.now()
+            grade = self.user_info.grade.lower()
+            
+            # 获取最近的考研时间
+            current_year = current_date.year
+            
+            # 根据年级判断考研年份
+            if "大四" in grade or "应届" in grade:
+                exam_year = current_year
+            elif "大三" in grade:
+                exam_year = current_year + 1
+            elif "大二" in grade:
+                exam_year = current_year + 2
+            elif "大一" in grade:
+                exam_year = current_year + 3
+            else:  # 默认按最近一次考研计算
+                exam_year = current_year 
+            
+            # 考研时间通常在12月22-24日左右，这里统一设为23日
+            exam_date = datetime.strptime(f"{exam_year}-12-23", "%Y-%m-%d")
+            
+            # 如果当前日期已经过了今年的考研时间，就算下一年的
+            if current_date > exam_date:
+                exam_date = datetime.strptime(f"{exam_year + 1}-12-23", "%Y-%m-%d")
+            
+            days_until_exam = (exam_date - current_date).days
+            if days_until_exam > 0:
                 return DimensionScore(
                     "备考时间",
-                    score_info['score'],
+                    min(days_until_exam // 15, 25),  # 每15天1分，最多25分
                     self.WEIGHTS["prep_time"],
-                    f"{score_info['desc']}({days_until_exam}天)"
+                    f"备考时间({days_until_exam}天)"
                 )
-        
-        # 如果天数为负或没有匹配的区间，返回最低分
-        return DimensionScore(
-            "备考时间",
-            PREP_TIME_SCORES[(0, 90)]['score'],
-            self.WEIGHTS["prep_time"],
-            f"备考时间不足({max(0, days_until_exam)}天)"
-        )
+            return DimensionScore(
+                "备考时间",
+                0,
+                self.WEIGHTS["prep_time"],
+                "备考时间不足"
+            )
+        except Exception as e:
+            logger.error(f"计算备考时间得分时出错: {str(e)}")
+            return DimensionScore(
+                "备考时间",
+                0,
+                self.WEIGHTS["prep_time"],
+                "默认"
+            )
 
     def calculate_english_score(self) -> DimensionScore:
         """计算英语基础得分"""
-        cet = self.user_info.cet.lower()
-        if "六级" in cet:
-            score_info = ENGLISH_LEVEL_SCORES['CET6']
-        elif "四级" in cet:
-            score_info = ENGLISH_LEVEL_SCORES['CET4']
-        else:
-            score_info = ENGLISH_LEVEL_SCORES['NONE']
-        return DimensionScore(
-            "英语基础",
-            score_info['score'],
-            self.WEIGHTS["english"],
-            score_info['desc']
-        )
+        try:
+            cet_level = self.user_info.cet.lower()  # 使用cet字段
+            if "六级" in cet_level:
+                return DimensionScore(
+                    "英语基础",
+                    5,  # 分数
+                    self.WEIGHTS["english"],  # 权重
+                    "英语基础扎实"  # 描述
+                )
+            elif "四级" in cet_level:
+                return DimensionScore(
+                    "英语基础",
+                    2,
+                    self.WEIGHTS["english"],
+                    "英语基础一般"
+                )
+            return DimensionScore(
+                "英语基础",
+                0,
+                self.WEIGHTS["english"],
+                "英语基础薄弱"
+            )
+        except Exception as e:
+            logger.error(f"计算英语基础得分时出错: {str(e)}")
+            return DimensionScore(
+                "英语基础",
+                0,
+                self.WEIGHTS["english"],
+                "未知英语水平"
+            )
 
     def calculate_major_match_score(self, school_info: SchoolInfo) -> DimensionScore:
         """计算专业匹配度得分"""
-        user_major = self.user_info.major
-        target_major = school_info.major
-        
-        # 完全匹配
-        if user_major == target_major:
-            return DimensionScore(
-                "专业匹配度",
-                MAJOR_MATCH_SCORES['EXACT'],
-                self.WEIGHTS["major_match"],
-                "专业完全匹配"
-            )
-        
-        # 获取用户专业的考研方向
-        advance_majors = self._get_advance_majors(user_major)
-        
-        # 检查目标专业是否在考研方向中
-        if advance_majors and target_major in advance_majors:
-            return DimensionScore(
-                "专业匹配度",
-                MAJOR_MATCH_SCORES['IN_DIRECTION'],
-                self.WEIGHTS["major_match"],
-                f"目标专业在考研方向中"
-            )
+        try:
+            user_major = self.user_info.major
+            target_major = school_info.major
             
-        # 不相关专业
-        return DimensionScore(
-            "专业匹配度",
-            MAJOR_MATCH_SCORES['DIFFERENT'],
-            self.WEIGHTS["major_match"],
-            "跨专业"
-        )
+            # 专业名称完全一致
+            if user_major == target_major:
+                return DimensionScore(
+                    "专业匹配度",
+                    MAJOR_MATCH_SCORES['EXACT'],
+                    self.WEIGHTS["major_match"],
+                    "专业完全匹配"
+                )
+            
+            # 获取两个专业的考研方向
+            user_advance_majors = set(self._get_advance_majors(user_major))  # 转换为set
+            target_advance_majors = set(self._get_advance_majors(target_major))  # 转换为set
+            
+            # 如果两个专业都在对方的考研方向中
+            if user_major in target_advance_majors or target_major in user_advance_majors:
+                return DimensionScore(
+                    "专业匹配度",
+                    MAJOR_MATCH_SCORES['IN_DIRECTION'],
+                    self.WEIGHTS["major_match"],
+                    f"目标专业在考研方向中"
+                )
+            
+            # 检查是否有共同的考研方向
+            common_directions = user_advance_majors.intersection(target_advance_majors)
+            if common_directions:
+                return DimensionScore(
+                    "专业匹配度",
+                    MAJOR_MATCH_SCORES['IN_DIRECTION'],
+                    self.WEIGHTS["major_match"],
+                    f"目标专业在考研方向中"
+                )
+            
+            return DimensionScore(
+                "专业匹配度",
+                MAJOR_MATCH_SCORES['DIFFERENT'],
+                self.WEIGHTS["major_match"],
+                "跨专业"
+            )
+        except Exception as e:
+            logger.error(f"计算专业匹配度得分时出错: {str(e)}")
+            return DimensionScore(
+                "专业匹配度",
+                MAJOR_MATCH_SCORES['DIFFERENT'],
+                self.WEIGHTS["major_match"],
+                "跨专业"
+            )
 
     def calculate_competition_score(self, school_info: SchoolInfo) -> DimensionScore:
         """计算竞争强度得分"""

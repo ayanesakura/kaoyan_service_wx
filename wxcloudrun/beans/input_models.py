@@ -217,4 +217,4 @@ class SchoolInfo(BaseModel):
                 "province": "北京",
                 "city": "北京"
             }
-        } 
+        }
