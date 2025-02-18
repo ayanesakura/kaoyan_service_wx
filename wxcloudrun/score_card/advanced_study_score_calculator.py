@@ -329,9 +329,9 @@ class AdvancedStudyScoreCalculator:
             school_level = self._get_school_level(school_info)
             # 获取对应层级的默认值
             default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
-            
+            numbers = [] 
             if employment_data:
-                numbers = []
+
                 for year_data in employment_data:
                     deep_info = year_data.get('employment_data', {}).get('深造情况', {})
                     if deep_info:
@@ -368,9 +368,9 @@ class AdvancedStudyScoreCalculator:
             school_level = self._get_school_level(school_info)
             # 获取对应层级的默认值
             default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
-            
+            rates = []
             if employment_data:
-                rates = []
+                
                 for year_data in employment_data:
                     deep_info = year_data.get('employment_data', {}).get('深造情况', {})
                     if deep_info and '总深造率' in deep_info:
@@ -416,9 +416,8 @@ class AdvancedStudyScoreCalculator:
             school_level = self._get_school_level(school_info)
             # 获取对应层级的默认值
             default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
-            
+            quality_scores = []
             if employment_data:
-                quality_scores = []
                 for year_data in employment_data:
                     deep_info = year_data.get('employment_data', {}).get('深造情况', {})
                     if deep_info:

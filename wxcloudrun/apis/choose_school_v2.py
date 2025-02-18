@@ -9,6 +9,59 @@ from wxcloudrun.score_card.major_score_calculator import MajorScoreCalculator
 from wxcloudrun.score_card.constants import PROBABILITY_LEVELS, SCORE_CARD_WEIGHTS
 from wxcloudrun.apis.choose_schools import SCHOOL_DATAS, load_school_data, city_level_map
 from wxcloudrun.score_card.advanced_study_score_calculator import AdvancedStudyScoreCalculator, init_default_values
+import os
+import pickle
+
+# 定义本地缓存文件路径
+CACHE_DIR = 'wxcloudrun/cache'
+SCHOOL_DATA_CACHE = os.path.join(CACHE_DIR, 'school_data.pkl')
+EMPLOYMENT_DATA_CACHE = os.path.join(CACHE_DIR, 'employment_data.pkl')
+
+def load_cached_data():
+    """从本地缓存加载数据"""
+    global SCHOOL_DATAS, EMPLOYMENT_DATA
+    try:
+        # 确保缓存目录存在
+        if not os.path.exists(CACHE_DIR):
+            os.makedirs(CACHE_DIR)
+            
+        # 尝试加载学校数据
+        if os.path.exists(SCHOOL_DATA_CACHE):
+            with open(SCHOOL_DATA_CACHE, 'rb') as f:
+                SCHOOL_DATAS = pickle.load(f)
+                logger.info(f"从本地缓存加载 {len(SCHOOL_DATAS)} 条学校数据")
+        
+        # 尝试加载就业数据
+        if os.path.exists(EMPLOYMENT_DATA_CACHE):
+            with open(EMPLOYMENT_DATA_CACHE, 'rb') as f:
+                EMPLOYMENT_DATA = pickle.load(f)
+                logger.info(f"从本地缓存加载 {len(EMPLOYMENT_DATA)} 所学校的就业数据")
+                
+        return bool(SCHOOL_DATAS and EMPLOYMENT_DATA)
+    except Exception as e:
+        logger.error(f"从本地缓存加载数据时出错: {str(e)}")
+        return False
+
+def save_data_to_cache():
+    """保存数据到本地缓存"""
+    try:
+        # 确保缓存目录存在
+        if not os.path.exists(CACHE_DIR):
+            os.makedirs(CACHE_DIR)
+            
+        # 保存学校数据
+        with open(SCHOOL_DATA_CACHE, 'wb') as f:
+            pickle.dump(SCHOOL_DATAS, f)
+            
+        # 保存就业数据
+        with open(EMPLOYMENT_DATA_CACHE, 'wb') as f:
+            pickle.dump(EMPLOYMENT_DATA, f)
+            
+        logger.info("成功保存数据到本地缓存")
+        return True
+    except Exception as e:
+        logger.error(f"保存数据到本地缓存时出错: {str(e)}")
+        return False
 
 # 初始化全局变量
 if SCHOOL_DATAS is None:
@@ -148,6 +201,9 @@ def _filter_schools(target_info: TargetInfo) -> List[SchoolInfo]:
 
 def _convert_school_info_to_dict(school_info: SchoolInfo) -> Dict:
     """将SchoolInfo对象转换为可JSON序列化的字典"""
+    # 获取就业数据
+    employment_info = EMPLOYMENT_DATA.get(school_info.school_name, [])
+    
     return {
         "school_name": school_info.school_name,
         "school_code": school_info.school_code,
@@ -160,7 +216,8 @@ def _convert_school_info_to_dict(school_info: SchoolInfo) -> Dict:
         "fsx": school_info.fsx,
         "directions": school_info.directions,
         "province": school_info.province,
-        "city": school_info.city
+        "city": school_info.city,
+        "jy": employment_info  # 添加就业数据
     }
 
 def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = False) -> Dict:
@@ -203,6 +260,7 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = 
                 # 在debug模式下添加学校详情
                 if debug:
                     target_school['school_detail'] = _convert_school_info_to_dict(school)
+                    target_school['score_info'] = score_info
                 
                 school_scores.append(target_school)
             except Exception as e:
@@ -339,23 +397,37 @@ def choose_schools_v2():
         # 确保学校数据已加载
         global SCHOOL_DATAS
         if not SCHOOL_DATAS:
-            logger.info("学校数据未加载，开始加载数据...")
-            if not load_school_data():
-                return jsonify({
-                    "code": -1,
-                    "data": None,
-                    "message": "学校数据加载失败"
-                })
-            SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS')
-            if not SCHOOL_DATAS:
-                return jsonify({
-                    "code": -1,
-                    "data": None,
-                    "message": "学校数据未初始化"
-                })
-            logger.info(f"成功加载 {len(SCHOOL_DATAS)} 条学校数据")
+            # 获取请求参数
+            request_data = request.get_json()
+            use_cache = request_data.get('use_cache', True)  # 默认使用缓存
+            
+            if use_cache:
+                logger.info("尝试从本地缓存加载数据...")
+                if load_cached_data():
+                    logger.info("成功从本地缓存加载数据")
+                else:
+                    logger.info("本地缓存加载失败，开始从源加载数据...")
+                    if not load_school_data():
+                        return jsonify({
+                            "code": -1,
+                            "data": None,
+                            "message": "学校数据加载失败"
+                        })
+                    SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS')
+                    # 保存到缓存
+                    save_data_to_cache()
+            else:
+                logger.info("从源加载数据...")
+                if not load_school_data():
+                    return jsonify({
+                        "code": -1,
+                        "data": None,
+                        "message": "学校数据加载失败"
+                    })
+                SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS')
+                # 保存到缓存
+                save_data_to_cache()
 
-        request_data = request.get_json()
         user_info = UserInfo(**request_data['user_info'])
         target_info = TargetInfo(**request_data['target_info'])
         debug_mode = request_data.get('debug', False)

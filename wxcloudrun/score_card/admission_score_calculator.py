@@ -120,7 +120,7 @@ class AdmissionScoreCalculator:
             if days_until_exam > 0:
                 return DimensionScore(
                     "备考时间",
-                    min(days_until_exam // 15, 25),  # 每15天1分，最多25分
+                    min(days_until_exam // 4, 100),  # 每4天1分，最多100分
                     self.WEIGHTS["prep_time"],
                     f"备考时间({days_until_exam}天)"
                 )
@@ -143,14 +143,14 @@ class AdmissionScoreCalculator:
         """计算英语基础得分"""
         try:
             cet_level = self.user_info.cet.lower()  # 使用cet字段
-            if "六级" in cet_level:
+            if "cet6" in cet_level:
                 return DimensionScore(
                     "英语基础",
                     5,  # 分数
                     self.WEIGHTS["english"],  # 权重
                     "英语基础扎实"  # 描述
                 )
-            elif "四级" in cet_level:
+            elif "cet4" in cet_level:
                 return DimensionScore(
                     "英语基础",
                     2,
@@ -270,17 +270,27 @@ class AdmissionScoreCalculator:
 
     def calculate_school_gap_score(self, school_info: SchoolInfo) -> DimensionScore:
         """计算学校档次跨度得分"""
-        def get_school_level(school: SchoolInfo) -> int:
-            if school.is_985 == "1":
+        def get_school_level(school_name: str) -> int:
+            """根据学校名称获取学校层级"""
+            from wxcloudrun.apis.choose_schools import city_level_map
+            
+            if school_name in city_level_map.get('c9', set()):
+                return 4
+            if school_name in city_level_map.get('985', set()):
                 return 3
-            elif school.is_211 == "1":
+            if school_name in city_level_map.get('211', set()):
                 return 2
             return 1
             
-        target_level = get_school_level(school_info)
-        user_level = 1  # 假设用户学校档次为1
+        target_level = get_school_level(school_info.school_name)
+        user_level = get_school_level(self.user_info.school)
         
         gap = target_level - user_level
+        
+        # 确保gap在SCHOOL_GAP_SCORES中有对应的值
+        if gap not in SCHOOL_GAP_SCORES:
+            gap = min(max(gap, min(SCHOOL_GAP_SCORES.keys())), max(SCHOOL_GAP_SCORES.keys()))
+        
         score_info = SCHOOL_GAP_SCORES[gap]
             
         return DimensionScore(
@@ -311,22 +321,49 @@ class AdmissionScoreCalculator:
 
     def calculate_enrollment_score(self, school_info: SchoolInfo) -> DimensionScore:
         """计算录取规模得分"""
-        total_enrollment = 0
-        for direction in school_info.directions:
-            try:
-                num = int(''.join(filter(str.isdigit, direction.zsrs)))
-                total_enrollment += num
-            except:
-                continue
-                
-        for (min_size, max_size), score_info in ENROLLMENT_SIZE_SCORES.items():
-            if min_size <= total_enrollment < max_size:
-                return DimensionScore(
-                    "录取规模",
-                    score_info['score'],
-                    self.WEIGHTS["enrollment"],
-                    f"{score_info['desc']}({total_enrollment}人)"
-                )
+        try:
+            total_enrollment = 0
+            # 计算nlqrs - 简化后的逻辑
+            nlqrs = 0
+            for direction in school_info.directions:
+                try:
+                    zsrs = direction.get('zsrs', '')
+                    # 提取数字字符
+                    num_str = ''.join(c for c in zsrs if c.isdigit())
+                    if num_str:
+                        nlqrs += int(num_str)
+                except Exception as e:
+                    logger.error(f"处理招生人数时出错: {str(e)}, zsrs={direction.get('zsrs')}")
+                    continue
+            
+            total_enrollment = nlqrs
+            
+            # 遍历所有规模区间
+            for (min_size, max_size), score_info in ENROLLMENT_SIZE_SCORES.items():
+                if min_size <= total_enrollment < max_size:
+                    return DimensionScore(
+                        "录取规模",
+                        score_info['score'],
+                        self.WEIGHTS["enrollment"],
+                        f"{score_info['desc']}({total_enrollment}人)"
+                    )
+            
+            # 如果没有匹配的区间，返回默认值
+            return DimensionScore(
+                "录取规模",
+                ENROLLMENT_SIZE_SCORES[(0, 10)]['score'],  # 使用最小规模的分数
+                self.WEIGHTS["enrollment"],
+                f"录取规模未知({total_enrollment}人)"
+            )
+        except Exception as e:
+            logger.error(f"计算录取规模得分时出错: {str(e)}")
+            # 返回默认值
+            return DimensionScore(
+                "录取规模",
+                ENROLLMENT_SIZE_SCORES[(0, 10)]['score'],
+                self.WEIGHTS["enrollment"],
+                "录取规模未知"
+            )
 
     def calculate_probability(self, total_score: float) -> float:
         """将总分转换为概率"""
