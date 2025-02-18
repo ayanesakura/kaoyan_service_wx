@@ -181,12 +181,10 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo) -> Dict:
                 score_info = school_chooser._calculate_school_score(school)
                 
                 # 获取各评分卡得分
-                location_score = school_chooser.location_calculator.calculate_total_score(school)
-                major_score = school_chooser.major_calculator.calculate_total_score(school)
-                advanced_study_score = school_chooser.advanced_calculator.calculate_total_score(
-                    school, 
-                    EMPLOYMENT_DATA.get(school.school_name, [])
-                )
+                location_score = score_info['location_score']
+                major_score = score_info['major_score']
+                advanced_study_score = score_info['advanced_study_score']
+                admission_score = score_info['admission_score']
                 
                 # 转换为目标格式
                 target_school = _convert_to_target_school(school, {
@@ -194,7 +192,8 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo) -> Dict:
                         'score_card': {
                             'location_card': location_score,
                             'major_card': major_score,
-                            'advanced_study_card': advanced_study_score
+                            'advanced_study_card': advanced_study_score,
+                            'admission_score': admission_score
                         },
                         'probability': score_info['probability'],
                         'total_score': score_info['total_score']
@@ -281,17 +280,21 @@ class SchoolChooser:
         admission_score = self.admission_calculator.calculate(school)
         location_score = self.location_calculator.calculate_total_score(school)
         major_score = self.major_calculator.calculate_total_score(school)
+        advanced_study_score = self.advanced_calculator.calculate_total_score(
+            school, 
+            EMPLOYMENT_DATA.get(school.school_name, [])
+        )   
         
         # 获取权重
-        admission_weight = self._get_weight('考上概率')
         location_weight = self._get_weight('地理位置')
         major_weight = self._get_weight('专业实力')
+        advanced_study_weight = self._get_weight('升学')
         
         # 计算加权总分
         total_score = (
-            admission_score['total_score'] * admission_weight +
             location_score['total_score'] * location_weight +
-            major_score['total_score'] * major_weight
+            major_score['total_score'] * major_weight +
+            advanced_study_score['total_score'] * advanced_study_weight
         )
         
         return {
@@ -302,7 +305,8 @@ class SchoolChooser:
             'level': admission_score['level'],
             'admission_score': admission_score,
             'location_score': location_score,
-            'major_score': major_score
+            'major_score': major_score,
+            'advanced_study_score': advanced_study_score
         }
         
     def _group_schools_by_probability(self, schools: List[SchoolInfo]) -> Dict[str, List[Dict]]:
@@ -364,8 +368,17 @@ def choose_schools_v2():
         request_data = request.get_json()
         user_info = UserInfo(**request_data['user_info'])
         target_info = TargetInfo(**request_data['target_info'])
+        debug_mode = request_data.get('debug', False)
         
-        return jsonify(analyze_schools(user_info, target_info))
+        result = analyze_schools(user_info, target_info)
+        
+        # 如果不是debug模式，移除详细信息
+        if not debug_mode and result['code'] == 0:
+            for school in result['data'].get('schools', []):
+                school.pop('dimension_scores', None)
+                school.pop('detailed_scores', None)
+        
+        return jsonify(result)
         
     except Exception as e:
         logger.error(f"处理请求时出错: {str(e)}")
@@ -411,6 +424,56 @@ def _convert_to_target_school(school_info: SchoolInfo, score_info: Dict) -> Dict
         except:
             continue
             
+    # 处理分数线数据
+    fsx_score = []
+    for fsx in school_info.fsx:
+        try:
+            year_data = {
+                'year': fsx.get('year'),
+                '总分': 0,
+                '科目1': 0,
+                '科目2': 0,
+                '科目3': 0,
+                '科目4': 0
+            }
+            for subject in fsx.get('data', []):
+                if subject.get('subject') == '总分':
+                    year_data['总分'] = subject.get('score', 0)
+                elif '科一' in subject.get('subject', ''):
+                    year_data['科目1'] = subject.get('score', 0)
+                elif '科二' in subject.get('subject', ''):
+                    year_data['科目2'] = subject.get('score', 0)
+                elif '科三' in subject.get('subject', ''):
+                    year_data['科目3'] = subject.get('score', 0)
+                elif '科四' in subject.get('subject', ''):
+                    year_data['科目4'] = subject.get('score', 0)
+            fsx_score.append(year_data)
+        except Exception as e:
+            logger.error(f"处理分数线数据时出错: {str(e)}")
+            continue
+            
+    # 计算nlqrs - 简化后的逻辑
+    nlqrs = 0
+    for direction in school_info.directions:
+        try:
+            zsrs = direction.get('zsrs', '')
+            # 提取数字字符
+            num_str = ''.join(c for c in zsrs if c.isdigit())
+            if num_str:
+                nlqrs += int(num_str)
+        except Exception as e:
+            logger.error(f"处理招生人数时出错: {str(e)}, zsrs={direction.get('zsrs')}")
+            continue
+    
+    # 转换评分卡格式
+    def convert_score_card(card_data: Dict) -> Dict:
+        if not card_data:
+            return {'total_score': 0}
+        result = {'total_score': card_data.get('total_score', 0)}
+        for dim in card_data.get('dimension_scores', []):
+            result[dim['name']] = dim['score']
+        return result
+    
     return {
         "school_name": school_info.school_name,
         "levels": levels,
@@ -418,23 +481,14 @@ def _convert_to_target_school(school_info: SchoolInfo, score_info: Dict) -> Dict
         "major_name": school_info.major,
         "major_code": school_info.major_code,
         "admission_probability": f"{admission_info['probability']}%",
+        "admission_score": convert_score_card(score_card.get('admission_score')),
         "total_score": str(_calculate_school_score(score_card, admission_info)),
-        "location_score": score_card.get('location_card', {
-            "dimension_scores": [],
-            "total_score": 0,
-            "school_name": school_info.school_name
-        }),
-        "major_score": score_card.get('major_card', {
-            "dimension_scores": [],
-            "total_score": 0,
-            "school_name": school_info.school_name
-        }),
-        "sx_score": score_card.get('advanced_study_card', {
-            "dimension_scores": [],
-            "total_score": 0,
-            "school_name": school_info.school_name
-        }),
+        "location_score": convert_score_card(score_card.get('location_card')),
+        "major_score": convert_score_card(score_card.get('major_card')),
+        "sx_score": convert_score_card(score_card.get('advanced_study_card')),
+        "tzjy_score": {},  # 待实现
+        "ftzjy_score": {}, # 待实现
         "blb_score": blb_score,
-        "fsx_score": score_info.get('fsx_score', {}),
-        "nlqrs": score_info.get('nlqrs', 0)
+        "fsx_score": fsx_score,
+        "nlqrs": nlqrs
     } 
