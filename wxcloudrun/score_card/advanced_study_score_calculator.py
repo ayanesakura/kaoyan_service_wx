@@ -282,6 +282,11 @@ class AdvancedStudyScoreCalculator:
     def calculate_rate_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict:
         """计算升学率得分"""
         try:
+            # 获取学校层级
+            school_level = self._get_school_level(school_info)
+            # 获取对应层级的默认值
+            default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
+            
             if employment_data:
                 rates = []
                 for year_data in employment_data:
@@ -301,21 +306,30 @@ class AdvancedStudyScoreCalculator:
                         'source': 'real'
                     }
             
-            # 使用默认值
+            # 使用对应层级的默认值
             return {
-                'score': ADVANCED_STUDY_DEFAULTS['升学率'],
+                'score': default_values.get('升学率', 0),
                 'source': 'default'
             }
+            
         except Exception as e:
             logger.error(f"计算升学率得分时出错: {str(e)}")
+            # 出错时也使用对应层级的默认值
+            school_level = self._get_school_level(school_info)
+            default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
             return {
-                'score': ADVANCED_STUDY_DEFAULTS['升学率'],
+                'score': default_values.get('升学率', 0),
                 'source': 'default'
             }
 
     def calculate_number_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict:
         """计算升学人数得分"""
         try:
+            # 获取学校层级
+            school_level = self._get_school_level(school_info)
+            # 获取对应层级的默认值
+            default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
+            
             if employment_data:
                 numbers = []
                 for year_data in employment_data:
@@ -325,28 +339,36 @@ class AdvancedStudyScoreCalculator:
                         if total > 0:
                             numbers.append(total)
             
-                if numbers:
-                    avg_number = sum(numbers) / len(numbers)
-                    return {
-                        'score': min(100, avg_number / 2),  # 每2人1分，最高100分
-                        'source': 'real'
-                    }
-            
-            # 使用默认值
+            if numbers:
+                avg_number = sum(numbers) / len(numbers)
+                return {
+                    'score': min(100, avg_number / 2),  # 每2人1分，最高100分
+                    'source': 'real'
+                }
+        
+            # 使用对应层级的默认值
             return {
-                'score': ADVANCED_STUDY_DEFAULTS['升学人数'],
+                'score': default_values.get('升学人数', 0),
                 'source': 'default'
             }
         except Exception as e:
             logger.error(f"计算升学人数得分时出错: {str(e)}")
+            # 出错时也使用对应层级的默认值
+            school_level = self._get_school_level(school_info)
+            default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
             return {
-                'score': ADVANCED_STUDY_DEFAULTS['升学人数'],
+                'score': default_values.get('升学人数', 0),
                 'source': 'default'
             }
 
     def calculate_growth_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict:
         """计算升学率增长得分"""
         try:
+            # 获取学校层级
+            school_level = self._get_school_level(school_info)
+            # 获取对应层级的默认值
+            default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
+            
             if employment_data:
                 rates = []
                 for year_data in employment_data:
@@ -358,9 +380,8 @@ class AdvancedStudyScoreCalculator:
                             rates.append(rate)
                         except (ValueError, TypeError):
                             continue
-            
+            growth_rates = [] 
             if len(rates) >= 2:
-                growth_rates = []
                 for i in range(1, len(rates)):
                     if rates[i-1] > 0:
                         growth_rate = ((rates[i] - rates[i-1]) / rates[i-1]) * 100
@@ -373,21 +394,29 @@ class AdvancedStudyScoreCalculator:
                     'source': 'calculated'
                 }
         
-            # 使用默认值
+            # 使用对应层级的默认值
             return {
-                'score': ADVANCED_STUDY_DEFAULTS['升学率增长'],
+                'score': default_values.get('升学率增长', 0),
                 'source': 'default'
             }
         except Exception as e:
             logger.error(f"计算升学率增长得分时出错: {str(e)}")
+            # 出错时也使用对应层级的默认值
+            school_level = self._get_school_level(school_info)
+            default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
             return {
-                'score': ADVANCED_STUDY_DEFAULTS['升学率增长'],
+                'score': default_values.get('升学率增长', 0),
                 'source': 'default'
             }
 
     def calculate_quality_score(self, school_info: SchoolInfo, employment_data: List[Dict]) -> Dict:
         """计算留学质量得分"""
         try:
+            # 获取学校层级
+            school_level = self._get_school_level(school_info)
+            # 获取对应层级的默认值
+            default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
+            
             if employment_data:
                 quality_scores = []
                 for year_data in employment_data:
@@ -406,15 +435,18 @@ class AdvancedStudyScoreCalculator:
                     'source': 'real'
                 }
         
-            # 使用默认值
+            # 使用对应层级的默认值
             return {
-                'score': ADVANCED_STUDY_DEFAULTS['留学质量'],
+                'score': default_values.get('留学质量', 0),
                 'source': 'default'
             }
         except Exception as e:
             logger.error(f"计算留学质量得分时出错: {str(e)}")
+            # 出错时也使用对应层级的默认值
+            school_level = self._get_school_level(school_info)
+            default_values = DEFAULT_VALUES.get(school_level, DEFAULT_VALUES['其他'])
             return {
-                'score': ADVANCED_STUDY_DEFAULTS['留学质量'],
+                'score': default_values.get('留学质量', 0),
                 'source': 'default'
             }
 
