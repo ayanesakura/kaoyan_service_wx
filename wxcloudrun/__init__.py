@@ -83,6 +83,10 @@ def get_access_token():
 def download_file():
     try:
         # 获取access_token
+        local_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
+        if os.path.exists(local_file_path):
+            print(f"文件已存在: {local_file_path}")
+            return
         pid = os.getpid()
         access_token = get_access_token()
         print(access_token)
