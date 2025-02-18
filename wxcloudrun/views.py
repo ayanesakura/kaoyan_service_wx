@@ -14,6 +14,7 @@ from wxcloudrun.apis.choose_schools import choose_schools
 from wxcloudrun.apis.ai_ana import ai_ana
 from wxcloudrun.apis.kyys import kyys
 from wxcloudrun.apis.choose_school_v2 import choose_schools_v2
+from wxcloudrun.apis.get_school_detail import get_school_detail
 
 @app.route('/')
 def index():
@@ -114,3 +115,7 @@ def ai_ana_api():
 @app.route('/api/kyys', methods=['POST'])
 def kyys_api():
     return kyys()
+
+@app.route('/api/get_school_detail', methods=['POST'])
+def get_school_detail_api():
+    return get_school_detail()
