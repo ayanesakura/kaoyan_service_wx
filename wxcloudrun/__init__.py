@@ -9,6 +9,7 @@ import json
 import requests
 import time
 from wxcloudrun.utils.file_util import loads_json
+from wxcloudrun.utils.token_manager import token_manager
 # 因MySQLDB不支持Python3，使用pymysql扩展库代替MySQLDB库
 pymysql.install_as_MySQLdb()
 
@@ -81,81 +82,71 @@ def get_access_token():
         return None
 
 def download_file():
+    """下载文件"""
+    # 确保资源目录存在
+    if not os.path.exists(RESOURCES_FOLDER):
+        os.makedirs(RESOURCES_FOLDER)
+    file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
+    if os.path.exists(file_path):
+        return True
+        
     try:
         # 获取access_token
-        local_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
-        if os.path.exists(local_file_path):
-            print(f"文件已存在: {local_file_path}")
-            return
-        pid = os.getpid()
-        access_token = get_access_token()
-        print(access_token)
-        if not access_token:
-            logger.error("Failed to get access_token")
-            return
-
-        # 调用微信云托管开放接口获取文件下载链接
-        api_url = 'https://api.weixin.qq.com/tcb/batchdownloadfile'
-        env = "prod-4g46sjwd41c4097c"  # 使用完整的云环境ID
+        success, token_or_error = token_manager.get_access_token()
+        if not success:
+            logger.error(f"Failed to get access_token: {token_or_error}")
+            return False
+            
+        access_token = token_or_error
         
+        # 构建下载请求
+        url = "https://api.weixin.qq.com/tcb/batchdownloadfile"
         data = {
-            "env": env,
+            "env": "prod-4g46sjwd41c4097c",
             "file_list": [
                 {
-                    "fileid": f"cloud://prod-4g46sjwd41c4097c.7072-prod-4g46sjwd41c4097c-1330319089/rich_fx_flat_v2.json",  # 使用正确格式的文件ID
+                    "fileid": "cloud://prod-4g46sjwd41c4097c.7072-prod-4g46sjwd41c4097c-1330319089/rich_fx_flat_v2.json",
                     "max_age": 7200
                 }
             ]
         }
         
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-        
-        logger.info(f"Requesting download url with data: {data}")  # 添加日志
-        
-        # 使用access_token调用接口
+        headers = {'Content-Type': 'application/json'}
         response = requests.post(
-            f"{api_url}?access_token={access_token}",
+            f"{url}?access_token={access_token}",
+            headers=headers,
             json=data,
-            headers=headers
+            timeout=30
         )
+        response.raise_for_status()
         
-        if response.status_code != 200:
-            logger.error(f"Failed to get download url: {response.text}")
-            return
-            
         result = response.json()
-        if result.get('errcode') != 0:
-            logger.error(f"Failed to get download url: {result}")
-            return
-            
-        # 获取下载链接
-        file_list = result.get('file_list', [])
-        if not file_list:
-            logger.error("No download url returned")
-            return
-            
-        download_url = file_list[0].get('download_url', '')
-        if not download_url:
-            logger.error("Download url is empty")
-            return
-            
-        # 下载文件
-        file_response = requests.get(download_url)
-        if file_response.status_code != 200:
-            logger.error(f"Failed to download file: {file_response.text}")
-            return
-            
-        # 保存文件
-        local_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
-        with open(local_file_path, 'wb') as f:
-            f.write(file_response.content)
-            
-        logger.info(f"Successfully downloaded file to {local_file_path}, process id: {pid}")
+        if result.get('errcode') == 0:
+            file_list = result.get('file_list', [])
+            if file_list:
+                download_url = file_list[0].get('download_url')
+                if download_url:
+                    # 下载文件
+                    file_response = requests.get(download_url, timeout=30)
+                    file_response.raise_for_status()
+                    
+                    # 保存文件
+                    with open(file_path, 'wb') as f:
+                        f.write(file_response.content)
+                    logger.info(f"Successfully downloaded file to {file_path}")
+                    return True
+                else:
+                    logger.error("No download URL in response")
+            else:
+                logger.error("No files in response")
+        else:
+            logger.error(f"Failed to get download URL: {result.get('errmsg', 'Unknown error')}")
+        
+        return False
+        
     except Exception as e:
-        logger.error(f"Failed to download file: {str(e)}")
+        logger.error(f"Error downloading file: {str(e)}")
+        return False
 
 def init_application():
     time.sleep(2)
