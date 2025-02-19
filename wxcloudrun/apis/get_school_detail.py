@@ -30,13 +30,7 @@ def get_school_detail():
         # 确保学校数据已加载
         global SCHOOL_DATAS
         if not SCHOOL_DATAS:
-            logger.info("学校数据未加载，开始加载数据...")
-            if not load_school_data():
-                return jsonify({
-                    "code": -1,
-                    "data": None,
-                    "message": "学校数据加载失败"
-                })
+            logger.info("学校数据未加载，从应用配置获取...")
             SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS')
             if not SCHOOL_DATAS:
                 return jsonify({

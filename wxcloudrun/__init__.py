@@ -10,6 +10,7 @@ import requests
 import time
 from wxcloudrun.utils.file_util import loads_json
 from wxcloudrun.utils.token_manager import token_manager
+import threading
 # 因MySQLDB不支持Python3，使用pymysql扩展库代替MySQLDB库
 pymysql.install_as_MySQLdb()
 
@@ -44,6 +45,10 @@ db = SQLAlchemy(app)
 # 缓存access_token
 _access_token = None
 _access_token_expires = 0
+
+# 添加全局状态标记
+_initialization_lock = threading.Lock()
+_is_initialized = False
 
 def get_access_token():
     global _access_token, _access_token_expires
@@ -83,21 +88,21 @@ def get_access_token():
 
 def download_file():
     """下载文件"""
+    global _is_initialized
+    
     # 确保资源目录存在
     if not os.path.exists(RESOURCES_FOLDER):
         os.makedirs(RESOURCES_FOLDER)
+    
     file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
+    
+    # 如果文件已存在且已初始化完成,直接返回
     if os.path.exists(file_path):
         return True
         
     try:
         # 获取access_token
-        success, token_or_error = token_manager.get_access_token()
-        if not success:
-            logger.error(f"Failed to get access_token: {token_or_error}")
-            return False
-            
-        access_token = token_or_error
+        access_token = get_access_token()
         
         # 构建下载请求
         url = "https://api.weixin.qq.com/tcb/batchdownloadfile"
@@ -143,38 +148,63 @@ def download_file():
             logger.error(f"Failed to get download URL: {result.get('errmsg', 'Unknown error')}")
         
         return False
-        
+            
     except Exception as e:
         logger.error(f"Error downloading file: {str(e)}")
         return False
 
 def init_application():
-    time.sleep(2)
-    download_file()  # 文件下载
-    # 加载数据到配置
-    json_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
+    """初始化应用程序"""
+    global _is_initialized
     
-    # 等待文件真正存在
-    max_retries = 10
-    retry_count = 0
-    while not os.path.exists(json_file_path) and retry_count < max_retries:
-        time.sleep(1)
-        retry_count += 1
+    # 如果已经初始化完成,直接返回
+    if _is_initialized:
+        return True
         
-    # 只有在文件存在时才进行数据加载
-    if os.path.exists(json_file_path):
+    with _initialization_lock:
+        # 双重检查
+        if _is_initialized:
+            return True
+            
         try:
-            school_data = loads_json(json_file_path)
-            app.config['SCHOOL_DATAS'] = school_data
+            # 等待2秒确保服务完全启动
+            time.sleep(2)
+            
+            # 下载文件
+            if not download_file():
+                logger.error("Failed to download file")
+                return False
+                
+            # 加载数据到配置
+            json_file_path = os.path.join(RESOURCES_FOLDER, 'rich_fx_flat_v2.json')
+            
+            # 等待文件就绪
+            max_retries = 10
+            retry_count = 0
+            while not os.path.exists(json_file_path) and retry_count < max_retries:
+                time.sleep(1)
+                retry_count += 1
+            
+            # 加载数据
+            if os.path.exists(json_file_path):
+                try:
+                    school_data = loads_json(json_file_path)
+                    app.config['SCHOOL_DATAS'] = school_data
+                    _is_initialized = True
+                    logger.info("Application initialization completed successfully")
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to load school data: {str(e)}")
+                    return False
+            else:
+                logger.error("School data file not found after waiting")
+                return False
+                
         except Exception as e:
-            logger.error(f"加载学校数据失败: {str(e)}")
+            logger.error(f"Error during application initialization: {str(e)}")
+            return False
 
 def is_data_ready():
-    return bool(app.config.get('SCHOOL_DATAS'))
+    """检查数据是否准备就绪"""
+    return _is_initialized and bool(app.config.get('SCHOOL_DATAS'))
 
-def choose_schools_v2():
-    if not is_data_ready():
-        return jsonify({
-            "code": -1,
-            "message": "系统初始化中,请稍后重试"
-        })

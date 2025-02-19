@@ -74,7 +74,7 @@ def ensure_data_loaded():
     if SCHOOL_DATAS is None:
         logger.info("学校数据未加载，开始加载数据...")
         try:
-            # 首先从应用配置获取数据
+            # 从应用配置获取数据
             SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS', [])
             if SCHOOL_DATAS:
                 logger.info(f"从应用配置加载 {len(SCHOOL_DATAS)} 条学校数据")
@@ -89,20 +89,9 @@ def ensure_data_loaded():
                         if is_211 == "1":
                             city_level_map['211'].add(school_name)
             else:
-                # 尝试从缓存加载
-                if not load_cached_data():
-                    logger.info("缓存加载失败，尝试从源文件加载...")
-                    # 如果缓存加载失败，尝试从源文件加载
-                    if load_school_data():
-                        SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS', [])
-                        if SCHOOL_DATAS:
-                            logger.info(f"成功从源文件加载 {len(SCHOOL_DATAS)} 条学校数据")
-                            # 保存到缓存
-                            save_data_to_cache()
-                        else:
-                            raise ValueError("从源文件加载的数据为空")
-                    else:
-                        raise ValueError("学校数据加载失败")
+                logger.error("应用配置中没有学校数据")
+                SCHOOL_DATAS = []
+                return False
         except Exception as e:
             logger.error(f"加载学校数据时出错: {str(e)}")
             logger.exception(e)
@@ -128,10 +117,8 @@ def ensure_data_loaded():
                             logger.error(f"处理就业数据行时出错: {str(e)}")
                             continue
             
-            
             if EMPLOYMENT_DATA:
                 logger.info(f"成功加载 {len(EMPLOYMENT_DATA)} 所学校的就业数据")
-                
                 
                 # 初始化默认值
                 try:

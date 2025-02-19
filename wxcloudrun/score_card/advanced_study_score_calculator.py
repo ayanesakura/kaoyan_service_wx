@@ -7,12 +7,6 @@ import numpy as np
 from statistics import median
 from collections import defaultdict
 
-# 确保学校数据已加载
-if not city_level_map.get('211'):
-    logger.info("学校层级数据未加载，开始加载数据...")
-    load_school_data()
-    if not city_level_map.get('211'):
-        logger.error("学校层级数据加载失败")
 # 打印不同层级学校的个数
 for level, schools in city_level_map.items():
     logger.info(f"{level} 层级的学校数量: {len(schools)}")
