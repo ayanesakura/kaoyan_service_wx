@@ -77,6 +77,4 @@ def load_all_data():
     # 标记数据已加载
     _DATA_LOADED = True
 
-
-# 初始化时加载所有数据
 load_all_data()

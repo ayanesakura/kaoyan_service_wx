@@ -5,7 +5,6 @@ import logging
 import json
 import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.file_util import loads_json
 
 # 配置日志
 logging.basicConfig(

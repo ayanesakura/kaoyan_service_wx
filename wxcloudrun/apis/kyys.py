@@ -2,7 +2,6 @@ import os
 import sys
 sys.path.append(os.getcwd())
 from werkzeug.utils import secure_filename
-from wxcloudrun.utils.file_util import loads_json
 from flask import request, jsonify
 from typing import List, Dict
 from wxcloudrun.utils.kimi_api_utils import KimiApiClient

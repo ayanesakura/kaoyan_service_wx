@@ -8,7 +8,6 @@ import logging
 import json
 import requests
 import time
-from wxcloudrun.utils.file_util import loads_json
 # 因MySQLDB不支持Python3，使用pymysql扩展库代替MySQLDB库
 pymysql.install_as_MySQLdb()
 

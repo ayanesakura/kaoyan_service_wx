@@ -27,8 +27,6 @@ class DataManager:
                 if not self._initialized:
                     self.resources_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'resources')
                     self.school_data_file = os.path.join(self.resources_dir, 'rich_fx_flat_v2.json')
-                    self.school_data = None
-                    self._initialized = True
     
     def get_access_token(self) -> Optional[str]:
         """获取微信云开发access token"""
@@ -131,6 +129,9 @@ class DataManager:
     def initialize(self, max_retries: int = 1) -> bool:
         """初始化数据管理器"""
         retry_count = 0
+        logger.info(f"当前状态: {self._initialized}")
+        if  self._initialized:
+            return True
         while retry_count < max_retries:
             try:
                 logger.info(f"开始初始化数据 (第 {retry_count + 1} 次尝试)")
@@ -140,6 +141,7 @@ class DataManager:
                     raise Exception("下载文件失败")
                 
                 logger.info("下载数据成功")
+                self._initialized = True
                 return True
                 
             except Exception as e:
@@ -155,4 +157,3 @@ class DataManager:
 
 # 创建全局单例实例
 data_manager = DataManager() 
-data_manager.initialize()
