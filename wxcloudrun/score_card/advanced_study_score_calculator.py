@@ -1,11 +1,15 @@
-from typing import Dict, List, Any, Tuple
+
 from loguru import logger
 from wxcloudrun.score_card.constants import SCHOOL_LEVELS, ADVANCED_STUDY_WEIGHTS, SCORE_LEVELS
-from wxcloudrun.apis.choose_schools import city_level_map, load_school_data
+from wxcloudrun.utils.file_util import CITY_LEVEL_MAP
 from wxcloudrun.beans.input_models import UserInfo, TargetInfo, SchoolInfo
 import numpy as np
+from typing import Dict, List, Any, Tuple
 from statistics import median
 from collections import defaultdict
+
+# 确保学校数据已加载
+city_level_map = CITY_LEVEL_MAP
 
 # 打印不同层级学校的个数
 for level, schools in city_level_map.items():

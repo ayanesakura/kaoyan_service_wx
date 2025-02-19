@@ -8,7 +8,6 @@ from typing import List, Dict
 import time
 from wxcloudrun.utils.admission_score_card import get_admission_score
 import math
-import logging
 
 # 加载学校基础数据
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -24,36 +23,32 @@ city_level_map = {
     'c9': set(['北京大学', '清华大学', '复旦大学', '上海交通大学', '浙江大学', '南京大学', '中国科学技术大学', '哈尔滨工业大学', '西安交通大学'])
 }
 
-logger = logging.getLogger(__name__)
-
 def load_school_data():
-    """加载学校数据"""
+    """加载学校数据，如果文件不存在则等待并重试"""
     global SCHOOL_DATAS, city_level_map
     
-    try:
-        # 从应用配置获取数据
-        SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS')
-        if not SCHOOL_DATAS:
-            logger.error("应用配置中没有学校数据")
-            return False
-            
-        # 更新city_level_map
-        for data in SCHOOL_DATAS:
-            school_name = data.get('school_name')
-            is_985 = data.get('is_985')
-            is_211 = data.get('is_211')
-            if school_name:
-                if is_985 == "1":
-                    city_level_map['985'].add(school_name)
-                if is_211 == "1":
-                    city_level_map['211'].add(school_name)
-                    
-        logger.info(f"从应用配置加载 {len(SCHOOL_DATAS)} 条学校数据")
-        return True
+    max_retries = 30  # 最多等待30秒
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            if os.path.exists(SCHOOL_DATA_PATH):
+                SCHOOL_DATAS = loads_json(SCHOOL_DATA_PATH)
+                # 更新city_level_map
+                for data in SCHOOL_DATAS:
+                    school_name, is_985, is_211 = data['school_name'], data['is_985'], data['is_211']
+                    if is_985 == "1":
+                        city_level_map['985'].add(school_name)
+                    if is_211 == "1":
+                        city_level_map['211'].add(school_name)
+                return True
+        except Exception as e:
+            print(f"Error loading school data: {e}")
         
-    except Exception as e:
-        logger.error(f"加载学校数据时出错: {str(e)}")
-        return False
+        retry_count += 1
+        time.sleep(1)  # 等待1秒后重试
+    
+    return False
 
 def is_target_match(target_info, school_info):
     # 获取目标信息中的各个字段,不存在则为空
