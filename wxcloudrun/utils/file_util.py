@@ -38,8 +38,9 @@ def load_all_data():
     resources_dir = os.path.join(cur_dir, 'resources')
     
     # 加载学校数据
-    school_data_path = os.path.join(resources_dir, 'rich_fx_flat_v2.json')
-    SCHOOL_DATAS = loads_json(school_data_path)
+    school_data_path = os.path.join(resources_dir, 'rich_fx_flat_v2_a.json')
+    school_data_path_2 = os.path.join(resources_dir, 'rich_fx_flat_v2_b.json')
+    SCHOOL_DATAS = loads_json(school_data_path) + loads_json(school_data_path_2)
     logger.info(f"加载了 {len(SCHOOL_DATAS)} 条学校数据")
     
     # 加载专业数据

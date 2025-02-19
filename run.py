@@ -10,7 +10,7 @@ from wxcloudrun.utils.data_manager import data_manager
 # 启动Flask Web服务
 if __name__ == '__main__':
     # 启动服务
-    data_manager.initialize()
+    # data_manager.initialize()
     from wxcloudrun import app
     # 导入views注册路由
     import wxcloudrun.views
