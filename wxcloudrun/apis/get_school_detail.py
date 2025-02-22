@@ -1,7 +1,7 @@
 from typing import Dict, Optional
 from loguru import logger
 from flask import request, jsonify, current_app
-from wxcloudrun.apis.choose_schools import SCHOOL_DATAS, load_school_data
+from utils.file_util import SCHOOL_DATAS
 from wxcloudrun.score_card.advanced_study_score_calculator import EMPLOYMENT_DATA
 from wxcloudrun.beans.input_models import SchoolInfo
 
@@ -28,23 +28,6 @@ def get_school_detail():
     """获取学校专业详情的接口函数"""
     try:
         # 确保学校数据已加载
-        global SCHOOL_DATAS
-        if not SCHOOL_DATAS:
-            logger.info("学校数据未加载，开始加载数据...")
-            if not load_school_data():
-                return jsonify({
-                    "code": -1,
-                    "data": None,
-                    "message": "学校数据加载失败"
-                })
-            SCHOOL_DATAS = current_app.config.get('SCHOOL_DATAS')
-            if not SCHOOL_DATAS:
-                return jsonify({
-                    "code": -1,
-                    "data": None,
-                    "message": "学校数据未初始化"
-                })
-            logger.info(f"成功加载 {len(SCHOOL_DATAS)} 条学校数据")
 
         # 获取请求参数
         request_data = request.get_json()
