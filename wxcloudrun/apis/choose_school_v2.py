@@ -6,6 +6,8 @@ from wxcloudrun.beans.input_models import UserInfo, TargetInfo, SchoolInfo, Area
 from wxcloudrun.score_card.admission_score_calculator import AdmissionScoreCalculator
 from wxcloudrun.score_card.location_score_calculator import LocationScoreCalculator
 from wxcloudrun.score_card.major_score_calculator import MajorScoreCalculator
+from wxcloudrun.score_card.system_employment_score_calculator import SystemEmploymentScoreCalculator
+from wxcloudrun.score_card.non_system_employment_score_calculator import NonSystemEmploymentScoreCalculator
 from wxcloudrun.score_card.constants import PROBABILITY_LEVELS, SCORE_CARD_WEIGHTS
 from wxcloudrun.utils.file_util import SCHOOL_DATAS, EMPLOYMENT_DATA, CITY_LEVEL_MAP
 from wxcloudrun.score_card.advanced_study_score_calculator import AdvancedStudyScoreCalculator, init_default_values
@@ -155,6 +157,8 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = 
                 major_score = score_info['major_score']
                 advanced_study_score = score_info['advanced_study_score']
                 admission_score = score_info['admission_score']
+                system_employment_score = score_info['system_employment_score']
+                non_system_employment_score = score_info['non_system_employment_score']
                 
                 # 转换为目标格式
                 target_school = _convert_to_target_school(school, {
@@ -163,7 +167,9 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = 
                             'location_card': location_score,
                             'major_card': major_score,
                             'advanced_study_card': advanced_study_score,
-                            'admission_score': admission_score
+                            'admission_score': admission_score,
+                            'system_employment_card': system_employment_score,
+                            'non_system_employment_card': non_system_employment_score
                         },
                         'probability': score_info['probability'],
                         'total_score': score_info['total_score']
@@ -223,17 +229,37 @@ class SchoolChooser:
     def __init__(self, user_info: UserInfo, target_info: TargetInfo):
         self.user_info = user_info
         self.target_info = target_info
-        self.admission_calculator = AdmissionScoreCalculator(user_info, target_info)
+        
+        # 初始化所有评分计算器
         self.location_calculator = LocationScoreCalculator(user_info, target_info)
         self.major_calculator = MajorScoreCalculator(user_info, target_info)
         self.advanced_calculator = AdvancedStudyScoreCalculator(user_info, target_info)
+        self.admission_calculator = AdmissionScoreCalculator(user_info, target_info)
+        # 添加新的评分计算器
+        self.system_employment_calculator = SystemEmploymentScoreCalculator(user_info, target_info)
+        self.non_system_employment_calculator = NonSystemEmploymentScoreCalculator(user_info, target_info)
         
-    def _get_weight(self, name: str) -> float:
-        """获取指定维度的权重"""
-        for weight in self.target_info.weights:
-            if weight.name == name:
-                return weight.val
-        return 0.33  # 默认权重
+        # 初始化权重
+        self.weights = self._init_weights()
+        
+    def _init_weights(self) -> Dict[str, float]:
+        """初始化权重"""
+        weights = {
+            '地理位置': 0.15,
+            '专业实力': 0.15,
+            '升学': 0.2,
+            '录取概率': 0.2,
+            '体制内就业': 0.15,  # 添加体制内就业权重
+            '非体制就业': 0.15   # 添加非体制就业权重
+        }
+        
+        # 如果有用户自定义权重，则使用用户定义的
+        if self.target_info.weights:
+            for weight in self.target_info.weights:
+                if weight.name in weights:
+                    weights[weight.name] = weight.val
+                    
+        return weights
         
     def _calculate_school_score(self, school: SchoolInfo) -> Dict:
         """计算学校的综合得分"""
@@ -241,21 +267,27 @@ class SchoolChooser:
         admission_score = self.admission_calculator.calculate(school)
         location_score = self.location_calculator.calculate_total_score(school)
         major_score = self.major_calculator.calculate_total_score(school)
+        system_employment_score = self.system_employment_calculator.calculate_total_score(school)
+        non_system_employment_score = self.non_system_employment_calculator.calculate_total_score(school)
         advanced_study_score = self.advanced_calculator.calculate_total_score(
             school, 
             EMPLOYMENT_DATA.get(school.school_name, [])
         )   
         
         # 获取权重
-        location_weight = self._get_weight('地理位置')
-        major_weight = self._get_weight('专业实力')
-        advanced_study_weight = self._get_weight('升学')
+        location_weight = self.weights['地理位置']
+        major_weight = self.weights['专业实力']
+        advanced_study_weight = self.weights['升学']
+        system_employment_weight = self.weights['体制内就业']
+        non_system_employment_weight = self.weights['非体制就业']
         
         # 计算加权总分
         total_score = (
             location_score['total_score'] * location_weight +
             major_score['total_score'] * major_weight +
-            advanced_study_score['total_score'] * advanced_study_weight
+            advanced_study_score['total_score'] * advanced_study_weight +
+            system_employment_score['total_score'] * system_employment_weight +
+            non_system_employment_score['total_score'] * non_system_employment_weight
         )
         
         return {
@@ -267,7 +299,9 @@ class SchoolChooser:
             'admission_score': admission_score,
             'location_score': location_score,
             'major_score': major_score,
-            'advanced_study_score': advanced_study_score
+            'advanced_study_score': advanced_study_score,
+            'system_employment_score': system_employment_score,
+            'non_system_employment_score': non_system_employment_score
         }
         
     def _group_schools_by_probability(self, schools: List[SchoolInfo]) -> Dict[str, List[Dict]]:
@@ -435,8 +469,8 @@ def _convert_to_target_school(school_info: SchoolInfo, score_info: Dict) -> Dict
         "location_score": convert_score_card(score_card.get('location_card')),
         "major_score": convert_score_card(score_card.get('major_card')),
         "sx_score": convert_score_card(score_card.get('advanced_study_card')),
-        "tzjy_score": {},  # 待实现
-        "ftzjy_score": {}, # 待实现
+        "tzjy_score": convert_score_card(score_card.get('system_employment_card')),
+        "ftzjy_score": convert_score_card(score_card.get('non_system_employment_card')),
         "blb_score": blb_score,
         "fsx_score": fsx_score,
         "nlqrs": nlqrs
