@@ -166,7 +166,14 @@ class LocationScoreCalculator:
             }
         
     def calculate_total_score(self, school_info: SchoolInfo) -> Dict[str, Any]:
-        """计算总分"""
+        """计算地理位置评分
+        
+        Args:
+            school_info: 学校信息
+            
+        Returns:
+            评分结果
+        """
         # 检查CITY_SCORES是否有数据
         logger.debug(f"计算 {school_info.school_name} 的地理位置得分")
         logger.debug(f"城市评分数据: {CITY_SCORES.get(school_info.city)}")

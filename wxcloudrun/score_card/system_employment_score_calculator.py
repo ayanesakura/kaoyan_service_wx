@@ -1,12 +1,21 @@
 import json
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 from loguru import logger
 from statistics import median
 import numpy as np
-from scipy import stats
 from collections import defaultdict
 from wxcloudrun.beans.input_models import UserInfo, TargetInfo, SchoolInfo
-from wxcloudrun.utils.file_util import CITY_LEVEL_MAP
+from wxcloudrun.score_card.constants import (
+    SYSTEM_EMPLOYMENT_SCORE_WEIGHTS,
+    SYSTEM_EMPLOYMENT_SCORE_DEFAULTS,
+    SYSTEM_EMPLOYMENT_LEVELS
+)
+from wxcloudrun.score_card.score_data_loader import (
+    get_school_data,
+    get_major_data,
+    SCHOOL_DATA,
+    MAJOR_DATA
+)
 
 # 全局变量存储数据
 EMPLOYMENT_DATA = {}  # 就业数据
@@ -46,212 +55,284 @@ SYSTEM_EMPLOYMENT_LEVELS = {
     }
 }
 
-# 默认值
-DEFAULT_VALUES = {
-    'C9': {'公务员占比': 20, '事业单位占比': 15, '国有企业占比': 30},
-    '985': {'公务员占比': 15, '事业单位占比': 12, '国有企业占比': 25},
-    '211': {'公务员占比': 10, '事业单位占比': 10, '国有企业占比': 20},
-    '其他': {'公务员占比': 5, '事业单位占比': 8, '国有企业占比': 15}
-}
 
-def calculate_default_values():
-    """计算各层级的默认值"""
-    global DEFAULT_VALUES
-    
-    # 按层级收集数据
-    level_data = {
-        'C9': {'公务员占比': [], '事业单位占比': [], '国有企业占比': []},
-        '985': {'公务员占比': [], '事业单位占比': [], '国有企业占比': []},
-        '211': {'公务员占比': [], '事业单位占比': [], '国有企业占比': []},
-        '其他': {'公务员占比': [], '事业单位占比': [], '国有企业占比': []}
-    }
-    
-    # 遍历所有学校数据
-    for school_name in EMPLOYMENT_DATA:
-        level = get_school_level(school_name)
-        
-        # 计算各项占比
-        for ratio_type in ['公务员占比', '事业单位占比', '国有企业占比']:
-            ratio = calculate_average_ratio(school_name, ratio_type)
-            if ratio is not None:
-                level_data[level][ratio_type].append(ratio)
-    
-    # 计算每个层级的平均值
-    for level in level_data:
-        for ratio_type in level_data[level]:
-            values = level_data[level][ratio_type]
-            DEFAULT_VALUES[level][ratio_type] = np.mean(values) if values else 0
-
-def load_data():
-    """加载就业数据"""
-    global EMPLOYMENT_DATA
-    try:
-        with open('wxcloudrun/resources/aggregated_employment_data.jsonl', 'r', encoding='utf-8') as f:
-            for line in f:
-                data = json.loads(line)
-                EMPLOYMENT_DATA[data['school_name']] = data['years_data']
-        logger.info(f"成功加载 {len(EMPLOYMENT_DATA)} 所学校的就业数据")
-        
-        # 计算默认值
-        calculate_default_values()
-        logger.info(f"成功计算默认值: {DEFAULT_VALUES}")
-    except Exception as e:
-        logger.error(f"加载就业数据失败: {str(e)}")
-
-def get_school_level(school_name: str) -> str:
-    """获取学校层级"""
-    if school_name in CITY_LEVEL_MAP.get('c9', set()):
-        return 'C9'
-    if school_name in CITY_LEVEL_MAP.get('985', set()):
-        return '985'
-    if school_name in CITY_LEVEL_MAP.get('211', set()):
-        return '211'
-    return '其他'
-
-def calculate_average_ratio(school_name: str, ratio_type: str) -> float:
-    """计算学校某个比例的平均值"""
-    try:
-        years_data = EMPLOYMENT_DATA.get(school_name, [])
-        ratios = []
-        for year_data in years_data:
-            emp_data = year_data.get('employment_data', {}).get('就业情况', {})
-            system_data = emp_data.get('体制内就业', {})
-            if system_data and ratio_type in system_data:
-                try:
-                    ratio_str = str(system_data[ratio_type]).strip('%')  # 处理百分号
-                    ratio = float(ratio_str)
-                    ratios.append(ratio)
-                except (ValueError, TypeError):
-                    continue
-        
-        return np.mean(ratios) if ratios else None
-    except Exception as e:
-        logger.error(f"计算{school_name}的{ratio_type}平均值时出错: {str(e)}")
-        return None
-
-def calculate_percentile_score(value: float, all_values: List[float]) -> float:
-    """计算分位数得分"""
-    if not value or not all_values:
-        return 0
-    try:
-        all_values = np.array(all_values)
-        all_values = all_values[~np.isnan(all_values)]  # 移除NaN值
-        if len(all_values) == 0:
-            return 0
-        percentile = stats.percentileofscore(all_values, value)
-        return max(1, min(99, percentile))  # 限制在1-99之间
-    except Exception as e:
-        logger.error(f"计算分位数得分时出错: {str(e)}")
-        return 0
 
 class SystemEmploymentScoreCalculator:
     """体制内就业评分计算器"""
     
-    def __init__(self, user_info: UserInfo, target_info: TargetInfo):
+    def __init__(self, user_info: UserInfo, target_info: TargetInfo, target_schools: List[Tuple[str, str]]):
+        """初始化体制内就业评分计算器
+        
+        Args:
+            user_info: 用户信息
+            target_info: 目标信息
+            target_schools: 目标学校和专业列表，格式为[(school_name, major_code),...]
+        """
         self.user_info = user_info
         self.target_info = target_info
-        self.weights = SYSTEM_EMPLOYMENT_WEIGHTS
         
-    def _get_description(self, dimension: str, score: float) -> str:
-        """获取维度描述"""
-        if score >= SYSTEM_EMPLOYMENT_LEVELS['high']['threshold']:
-            return SYSTEM_EMPLOYMENT_LEVELS['high']['descriptions'][dimension]
-        elif score >= SYSTEM_EMPLOYMENT_LEVELS['medium']['threshold']:
-            return SYSTEM_EMPLOYMENT_LEVELS['medium']['descriptions'][dimension]
-        return SYSTEM_EMPLOYMENT_LEVELS['low']['descriptions'][dimension]
-
-    def calculate_ratio_score(self, school_info: SchoolInfo, ratio_type: str) -> Dict:
-        """计算各类占比得分"""
-        try:
-            # 获取该学校的平均占比
-            ratio = calculate_average_ratio(school_info.school_name, ratio_type)
+        # 存储所有需要参与计算的学校名称和专业代码
+        self.target_schools = target_schools
+        
+        # 初始化比较候选集
+        self.civil_servant_data = []
+        self.institution_data = []
+        self.state_owned_data = []
+        
+        # 初始化数据
+        self._init_comparison_data()
+        
+        logger.info(f"体制内就业评分计算器初始化完成，共有 {len(self.target_schools)} 个目标学校专业")
+    
+    def _init_comparison_data(self):
+        """初始化比较候选集数据"""
+        # 获取目标学校列表
+        target_school_names = set(school_name for school_name, _ in self.target_schools)
+        
+        # 公务员占比数据 - 只包含目标学校
+        for school_name in target_school_names:
+            school_data = get_school_data(school_name)
+            if school_data and school_data.civil_servant_ratio is not None:
+                self.civil_servant_data.append((school_name, school_data.civil_servant_ratio))
+        
+        # 事业单位占比数据 - 只包含目标学校
+        for school_name in target_school_names:
+            school_data = get_school_data(school_name)
+            if school_data and school_data.institution_ratio is not None:
+                self.institution_data.append((school_name, school_data.institution_ratio))
+        
+        # 国企占比数据 - 只包含目标学校
+        for school_name in target_school_names:
+            school_data = get_school_data(school_name)
+            if school_data and school_data.state_owned_ratio is not None:
+                self.state_owned_data.append((school_name, school_data.state_owned_ratio))
+        
+        logger.info(f"""比较候选集初始化完成:
+- 公务员占比数据: {len(self.civil_servant_data)} 条
+- 事业单位占比数据: {len(self.institution_data)} 条
+- 国企占比数据: {len(self.state_owned_data)} 条
+        """)
+    
+    def calculate_percentile(self, value: float, data_list: List[float], reverse: bool = False) -> float:
+        """计算分位点
+        
+        Args:
+            value: 目标值
+            data_list: 数据列表
+            reverse: 是否反向计算（值越小越好）
             
-            if ratio is None:
-                # 使用对应层级的平均值作为默认值
-                level = get_school_level(school_info.school_name)
-                return {
-                    'score': DEFAULT_VALUES[level][ratio_type],
-                    'source': 'default',
-                    'raw_value': DEFAULT_VALUES[level][ratio_type]  # 添加原始值
-                }
+        Returns:
+            分位点(0-100)
+        """
+        if not data_list:
+            return 50.0  # 默认中位数
+        
+        # 排序数据
+        sorted_data = sorted(data_list)
+        
+        # 计算分位点
+        if reverse:
+            # 值越小越好
+            percentile = 100 - (sum(1 for x in sorted_data if x <= value) / len(sorted_data) * 100)
+        else:
+            # 值越大越好
+            percentile = sum(1 for x in sorted_data if x <= value) / len(sorted_data) * 100
+        
+        return percentile
+    
+    def calculate_civil_servant_score(self, school_name: str) -> Dict[str, Any]:
+        """计算公务员占比得分
+        
+        Args:
+            school_name: 学校名称
             
-            # 获取所有学校的该类占比
-            all_ratios = []
-            for school_name in EMPLOYMENT_DATA:
-                r = calculate_average_ratio(school_name, ratio_type)
-                if r is not None:
-                    all_ratios.append(r)
-            
-            # 计算分位数得分
-            score = calculate_percentile_score(ratio, all_ratios)
+        Returns:
+            得分信息
+        """
+        school_data = get_school_data(school_name)
+        
+        if not school_data or school_data.civil_servant_ratio is None:
             return {
-                'score': score,
-                'source': 'real',
-                'raw_value': ratio
+                "score": SYSTEM_EMPLOYMENT_SCORE_DEFAULTS["civil_servant"],
+                "description": "公务员占比数据缺失",
+                "percentile": None,
+                "value": None
             }
-        except Exception as e:
-            logger.error(f"计算{ratio_type}得分时出错: {str(e)}")
-            level = get_school_level(school_info.school_name)
-            return {
-                'score': DEFAULT_VALUES[level][ratio_type],
-                'source': 'default',
-                'raw_value': DEFAULT_VALUES[level][ratio_type]  # 添加原始值
-            }
-
-    def calculate_total_score(self, school_info: SchoolInfo) -> Dict:
-        """计算总分"""
-        try:
-            # 计算各维度得分
-            civil_servant = self.calculate_ratio_score(school_info, '公务员占比')
-            institution = self.calculate_ratio_score(school_info, '事业单位占比')
-            state_owned = self.calculate_ratio_score(school_info, '国有企业占比')
+        
+        # 提取所有公务员占比值
+        civil_servant_values = [c[1] for c in self.civil_servant_data]
+        
+        # 计算分位点
+        percentile = self.calculate_percentile(
+            school_data.civil_servant_ratio, 
+            civil_servant_values
+        )
+        
+        # 映射到0-100分
+        score = percentile
+        
+        # 生成描述
+        for level, info in sorted(SYSTEM_EMPLOYMENT_LEVELS.items(), key=lambda x: x[1]['threshold'], reverse=True):
+            if percentile >= info['threshold']:
+                description = info['descriptions']['公务员占比']
+                break
+        else:
+            description = "公务员占比数据异常"
+        
+        return {
+            "score": score,
+            "description": description,
+            "percentile": percentile,
+            "value": school_data.civil_servant_ratio
+        }
+    
+    def calculate_institution_score(self, school_name: str) -> Dict[str, Any]:
+        """计算事业单位占比得分
+        
+        Args:
+            school_name: 学校名称
             
-            # 计算加权得分
-            dimension_scores = [
-                {
-                    'name': '公务员占比',
-                    'score': civil_servant['score'],
-                    'weight': self.weights['公务员占比'],
-                    'weighted_score': civil_servant['score'] * self.weights['公务员占比'],
-                    'source': civil_servant['source'],
-                    'raw_value': civil_servant.get('raw_value'),
-                    'description': self._get_description('公务员占比', civil_servant['score'])
-                },
-                {
-                    'name': '事业单位占比',
-                    'score': institution['score'],
-                    'weight': self.weights['事业单位占比'],
-                    'weighted_score': institution['score'] * self.weights['事业单位占比'],
-                    'source': institution['source'],
-                    'raw_value': institution.get('raw_value'),
-                    'description': self._get_description('事业单位占比', institution['score'])
-                },
-                {
-                    'name': '国有企业占比',
-                    'score': state_owned['score'],
-                    'weight': self.weights['国有企业占比'],
-                    'weighted_score': state_owned['score'] * self.weights['国有企业占比'],
-                    'source': state_owned['source'],
-                    'raw_value': state_owned.get('raw_value'),
-                    'description': self._get_description('国有企业占比', state_owned['score'])
-                }
-            ]
-            
-            # 计算总分
-            total_score = sum(score['weighted_score'] for score in dimension_scores)
-            
+        Returns:
+            得分信息
+        """
+        school_data = get_school_data(school_name)
+        
+        if not school_data or school_data.institution_ratio is None:
             return {
-                'dimension_scores': dimension_scores,
-                'total_score': total_score,
-                'school_name': school_info.school_name
+                "score": SYSTEM_EMPLOYMENT_SCORE_DEFAULTS["institution"],
+                "description": "事业单位占比数据缺失",
+                "percentile": None,
+                "value": None
             }
-        except Exception as e:
-            logger.error(f"计算总分时出错: {str(e)}")
+        
+        # 提取所有事业单位占比值
+        institution_values = [i[1] for i in self.institution_data]
+        
+        # 计算分位点
+        percentile = self.calculate_percentile(
+            school_data.institution_ratio, 
+            institution_values
+        )
+        
+        # 映射到0-100分
+        score = percentile
+        
+        # 生成描述
+        for level, info in sorted(SYSTEM_EMPLOYMENT_LEVELS.items(), key=lambda x: x[1]['threshold'], reverse=True):
+            if percentile >= info['threshold']:
+                description = info['descriptions']['事业单位占比']
+                break
+        else:
+            description = "事业单位占比数据异常"
+        
+        return {
+            "score": score,
+            "description": description,
+            "percentile": percentile,
+            "value": school_data.institution_ratio
+        }
+    
+    def calculate_state_owned_score(self, school_name: str) -> Dict[str, Any]:
+        """计算国企占比得分
+        
+        Args:
+            school_name: 学校名称
+            
+        Returns:
+            得分信息
+        """
+        school_data = get_school_data(school_name)
+        
+        if not school_data or school_data.state_owned_ratio is None:
             return {
-                'dimension_scores': [],
-                'total_score': 0,
-                'school_name': school_info.school_name
+                "score": SYSTEM_EMPLOYMENT_SCORE_DEFAULTS["state_owned"],
+                "description": "国企占比数据缺失",
+                "percentile": None,
+                "value": None
             }
-
-# 初始化数据
-load_data() 
+        
+        # 提取所有国企占比值
+        state_owned_values = [s[1] for s in self.state_owned_data]
+        
+        # 计算分位点
+        percentile = self.calculate_percentile(
+            school_data.state_owned_ratio, 
+            state_owned_values
+        )
+        
+        # 映射到0-100分
+        score = percentile
+        
+        # 生成描述
+        for level, info in sorted(SYSTEM_EMPLOYMENT_LEVELS.items(), key=lambda x: x[1]['threshold'], reverse=True):
+            if percentile >= info['threshold']:
+                description = info['descriptions']['国有企业占比']
+                break
+        else:
+            description = "国企占比数据异常"
+        
+        return {
+            "score": score,
+            "description": description,
+            "percentile": percentile,
+            "value": school_data.state_owned_ratio
+        }
+    
+    def calculate_total_score(self, school_info: SchoolInfo) -> Dict[str, Any]:
+        """计算体制内就业评分
+        
+        Args:
+            school_name: 学校名称
+            major_code: 专业代码
+            
+        Returns:
+            评分结果
+        """
+        school_name = school_info.school_name
+        major_code = school_info.major_code
+        # 计算各维度得分
+        civil_servant = self.calculate_civil_servant_score(school_name)
+        institution = self.calculate_institution_score(school_name)
+        state_owned = self.calculate_state_owned_score(school_name)
+        
+        # 计算加权总分
+        dimension_scores = [
+            {
+                "name": "公务员占比",
+                "score": civil_servant["score"],
+                "weight": SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["civil_servant"],
+                "weighted_score": civil_servant["score"] * SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["civil_servant"],
+                "description": civil_servant["description"],
+                "percentile": civil_servant["percentile"],
+                "value": civil_servant["value"]
+            },
+            {
+                "name": "事业单位占比",
+                "score": institution["score"],
+                "weight": SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["institution"],
+                "weighted_score": institution["score"] * SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["institution"],
+                "description": institution["description"],
+                "percentile": institution["percentile"],
+                "value": institution["value"]
+            },
+            {
+                "name": "国企占比",
+                "score": state_owned["score"],
+                "weight": SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["state_owned"],
+                "weighted_score": state_owned["score"] * SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["state_owned"],
+                "description": state_owned["description"],
+                "percentile": state_owned["percentile"],
+                "value": state_owned["value"]
+            }
+        ]
+        
+        total_score = sum(item["weighted_score"] for item in dimension_scores)
+        major_data = get_major_data(school_name, major_code)
+        
+        return {
+            "dimension_scores": dimension_scores,
+            "total_score": total_score,
+            "school_name": school_name,
+            "major_code": major_code,
+            "major_name": major_data.major_name if major_data else None
+        }

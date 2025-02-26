@@ -2,7 +2,7 @@ from typing import Dict, Optional
 from loguru import logger
 from flask import request, jsonify, current_app
 from utils.file_util import SCHOOL_DATAS
-from wxcloudrun.score_card.advanced_study_score_calculator import EMPLOYMENT_DATA
+from wxcloudrun.utils.file_util import EMPLOYMENT_DATA
 from wxcloudrun.beans.input_models import SchoolInfo
 
 def _find_school_major(school_name: str, major_name: str) -> Optional[Dict]:
@@ -25,44 +25,32 @@ def _find_school_major(school_name: str, major_name: str) -> Optional[Dict]:
         return None
 
 def get_school_detail():
-    """获取学校专业详情的接口函数"""
+    """获取学校详情"""
     try:
-        # 确保学校数据已加载
-
         # 获取请求参数
-        request_data = request.get_json()
-        school_name = request_data.get('school_name')
-        major_name = request_data.get('major_name')
-
-        # 参数验证
-        if not school_name or not major_name:
+        data = request.get_json()
+        school_name = data.get('school_name')
+        
+        if not school_name:
             return jsonify({
-                "code": -1,
-                "data": None,
-                "message": "缺少必要参数"
+                'code': 400,
+                'message': '缺少学校名称参数'
             })
-
-        # 查找学校专业
-        school_info = _find_school_major(school_name, major_name)
-        if not school_info:
-            return jsonify({
-                "code": -1,
-                "data": None,
-                "message": "未找到对应的学校专业"
-            })
-
-        # 直接返回字典数据
+        
+        # 获取学校就业数据
+        employment_info = EMPLOYMENT_DATA.get(school_name, [])
+        
+        # 返回结果
         return jsonify({
-            "code": 0,
-            "data": school_info,
-            "message": "success"
+            'code': 0,
+            'data': {
+                'school_name': school_name,
+                'employment_data': employment_info
+            }
         })
-
     except Exception as e:
-        logger.error(f"获取学校专业详情时出错: {str(e)}")
-        logger.exception(e)
+        logger.error(f"获取学校详情时出错: {str(e)}")
         return jsonify({
-            "code": -1,
-            "data": None,
-            "message": str(e)
+            'code': 500,
+            'message': f'获取学校详情失败: {str(e)}'
         })

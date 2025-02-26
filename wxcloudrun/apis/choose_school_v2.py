@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from loguru import logger
 from flask import request, jsonify, current_app
 from wxcloudrun.beans.input_models import UserInfo, TargetInfo, SchoolInfo, Area
@@ -8,23 +8,17 @@ from wxcloudrun.score_card.location_score_calculator import LocationScoreCalcula
 from wxcloudrun.score_card.major_score_calculator import MajorScoreCalculator
 from wxcloudrun.score_card.system_employment_score_calculator import SystemEmploymentScoreCalculator
 from wxcloudrun.score_card.non_system_employment_score_calculator import NonSystemEmploymentScoreCalculator
-from wxcloudrun.score_card.constants import PROBABILITY_LEVELS, SCORE_CARD_WEIGHTS
+from wxcloudrun.score_card.constants import PROBABILITY_LEVELS, SCORE_CARD_WEIGHTS, TOTAL_SCORE_WEIGHTS, ADMISSION_SCORE_WEIGHTS, ADMISSION_SCORE_DEFAULTS, ADMISSION_SCORE_LEVELS
 from wxcloudrun.utils.file_util import SCHOOL_DATAS, EMPLOYMENT_DATA, CITY_LEVEL_MAP
-from wxcloudrun.score_card.advanced_study_score_calculator import AdvancedStudyScoreCalculator, init_default_values
+from wxcloudrun.score_card.advanced_study_score_calculator import AdvancedStudyScoreCalculator
 import os
 import pickle
+from fastapi import APIRouter, Body, HTTPException
+from pydantic import BaseModel
 
 # 定义本地缓存文件路径
 city_level_map = CITY_LEVEL_MAP
 
-
-if EMPLOYMENT_DATA:
-    try:
-        init_default_values(EMPLOYMENT_DATA)
-        logger.info("成功初始化就业数据默认值")
-    except Exception as e:
-        logger.error(f"初始化就业数据默认值时出错: {str(e)}")
-        logger.exception(e)
 
 # 打印学校层级数据
 try:
@@ -138,11 +132,13 @@ def _convert_school_info_to_dict(school_info: SchoolInfo) -> Dict:
 def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = False) -> Dict:
     """分析学校列表"""
     try:
-        # 初始化评分计算器
-        school_chooser = SchoolChooser(user_info, target_info)
-        
         # 获取所有符合条件的学校
         schools = _filter_schools(target_info)
+        target_schools = [(school.school_name, school.major_code) for school in schools]
+        # 初始化评分计算器
+        school_chooser = SchoolChooser(user_info, target_info, target_schools)
+        
+
         logger.info(f"找到 {len(schools)} 所候选学校")
         
         # 计算每所学校的得分
@@ -183,7 +179,24 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = 
                 
                 school_scores.append(target_school)
             except Exception as e:
-                logger.error(f"计算学校 {school.school_name} 评分时出错: {str(e)}")
+                # 在182行添加更详细的错误日志
+                logger.error(
+                    f"计算学校 {school.school_name} 评分时出错:\n"
+                    f"错误类型: {type(e).__name__}\n"
+                    f"错误信息: {str(e)}\n"
+                    f"错误位置: {e.__traceback__.tb_frame.f_code.co_filename}:{e.__traceback__.tb_lineno}\n"
+                    f"学校信息: {vars(school)}\n"
+                    f"目标信息: {vars(target_info)}\n"
+                    f"用户信息: {vars(user_info)}\n"
+                    f"当前评分卡状态:\n"
+                    f"- location_calculator: {vars(school_chooser.location_calculator)}\n"
+                    f"- major_calculator: {vars(school_chooser.major_calculator)}\n"
+                    f"- admission_calculator: {vars(school_chooser.admission_calculator)}\n"
+                    f"- system_employment_calculator: {vars(school_chooser.system_employment_calculator)}\n"
+                    f"- non_system_employment_calculator: {vars(school_chooser.non_system_employment_calculator)}\n"
+                    f"- advanced_calculator: {vars(school_chooser.advanced_calculator)}"
+                )
+                logger.exception("完整错误栈:")
                 continue
         
         # 按录取概率等级分组
@@ -226,18 +239,19 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = 
 class SchoolChooser:
     """学校选择器"""
     
-    def __init__(self, user_info: UserInfo, target_info: TargetInfo):
+    def __init__(self, user_info: UserInfo, target_info: TargetInfo, target_schools: List[Tuple[str, str]]):
         self.user_info = user_info
         self.target_info = target_info
+        self.target_schools = target_schools
         
-        # 初始化所有评分计算器
+        # 初始化所有评分计算器      
         self.location_calculator = LocationScoreCalculator(user_info, target_info)
-        self.major_calculator = MajorScoreCalculator(user_info, target_info)
-        self.advanced_calculator = AdvancedStudyScoreCalculator(user_info, target_info)
+        self.major_calculator = MajorScoreCalculator(user_info, target_info, target_schools)
+        self.advanced_calculator = AdvancedStudyScoreCalculator(user_info, target_info, target_schools)
         self.admission_calculator = AdmissionScoreCalculator(user_info, target_info)
         # 添加新的评分计算器
-        self.system_employment_calculator = SystemEmploymentScoreCalculator(user_info, target_info)
-        self.non_system_employment_calculator = NonSystemEmploymentScoreCalculator(user_info, target_info)
+        self.system_employment_calculator = SystemEmploymentScoreCalculator(user_info, target_info, target_schools)
+        self.non_system_employment_calculator = NonSystemEmploymentScoreCalculator(user_info, target_info, target_schools)
         
         # 初始化权重
         self.weights = self._init_weights()
@@ -269,10 +283,7 @@ class SchoolChooser:
         major_score = self.major_calculator.calculate_total_score(school)
         system_employment_score = self.system_employment_calculator.calculate_total_score(school)
         non_system_employment_score = self.non_system_employment_calculator.calculate_total_score(school)
-        advanced_study_score = self.advanced_calculator.calculate_total_score(
-            school, 
-            EMPLOYMENT_DATA.get(school.school_name, [])
-        )   
+        advanced_study_score = self.advanced_calculator.calculate_total_score(school)
         
         # 获取权重
         location_weight = self.weights['地理位置']
@@ -314,7 +325,7 @@ class SchoolChooser:
         
         for school in schools:
             school_score = self._calculate_school_score(school)
-            probability = school_score['probability']
+            probability = school_score['admission_probability']
             
             if PROBABILITY_LEVELS['IMPOSSIBLE'] <= probability < PROBABILITY_LEVELS['DIFFICULT']:
                 grouped_schools['冲刺'].append(school_score)
@@ -474,4 +485,209 @@ def _convert_to_target_school(school_info: SchoolInfo, score_info: Dict) -> Dict
         "blb_score": blb_score,
         "fsx_score": fsx_score,
         "nlqrs": nlqrs
-    } 
+    }
+
+router = APIRouter()
+
+class ChooseSchoolRequest(BaseModel):
+    user_info: Dict[str, Any]
+    target_info: Dict[str, Any]
+
+@router.post("/choose_school_v2")
+async def choose_school_v2(request: ChooseSchoolRequest = Body(...)):
+    """选校API V2版本
+    
+    Args:
+        request: 请求体
+        
+    Returns:
+        选校结果
+    """
+    try:
+        # 解析请求参数
+        user_info = UserInfo(**request.user_info)
+        target_info = TargetInfo(**request.target_info)
+        
+        # 生成评分卡
+        score_cards = generate_score_cards(user_info, target_info)
+        
+        # 计算总评分
+        total_scores = calculate_total_scores(score_cards, target_info)
+        
+        # 返回结果
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "score_cards": score_cards,
+                "total_scores": total_scores
+            }
+        }
+    except Exception as e:
+        logger.exception(f"选校API出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def generate_score_cards(user_info: UserInfo, target_info: TargetInfo) -> Dict[str, Any]:
+    """生成评分卡
+    
+    Args:
+        user_info: 用户信息
+        target_info: 目标信息
+        
+    Returns:
+        评分卡结果
+    """
+    # 准备目标学校和专业列表
+    target_schools = [(school_info.school_name, school_info.major_code) for school_info in target_info.schools]
+    
+    # 初始化各评分计算器
+    major_calculator = MajorScoreCalculator(user_info, target_info, target_schools)
+    location_calculator = LocationScoreCalculator(user_info, target_info)
+    
+    # 计算专业评分
+    major_scores = major_calculator.calculate_all_scores()
+    
+    # 计算地理位置评分
+    location_scores = []
+    for school_info in target_info.schools:
+        try:
+            location_score = location_calculator.calculate_score(school_info)
+            location_scores.append(location_score)
+        except Exception as e:
+            logger.error(f"计算 {school_info.school_name} 的地理位置评分时出错: {str(e)}")
+    
+    # 根据用户意向计算就业或升学评分
+    if target_info.intention == "就业":
+        if target_info.employment_type == "体制内":
+            employment_calculator = SystemEmploymentScoreCalculator(user_info, target_info, target_schools)
+        else:
+            employment_calculator = NonSystemEmploymentScoreCalculator(user_info, target_info, target_schools)
+        
+        employment_scores = employment_calculator.calculate_all_scores()
+        advanced_study_scores = []
+    else:  # 升学
+        advanced_study_calculator = AdvancedStudyScoreCalculator(user_info, target_info, target_schools)
+        advanced_study_scores = advanced_study_calculator.calculate_all_scores()
+        employment_scores = []
+    
+    # 整合所有评分卡结果
+    score_cards = {
+        "major_card": major_scores,
+        "location_card": location_scores
+    }
+    
+    if target_info.intention == "就业":
+        score_cards["employment_card"] = employment_scores
+    else:
+        score_cards["advanced_study_card"] = advanced_study_scores
+    
+    return score_cards
+
+def calculate_admission_score(school_info: SchoolInfo, target_info: TargetInfo) -> Dict[str, Any]:
+    """计算录取概率评分
+    
+    Args:
+        school_info: 学校信息
+        target_info: 目标信息
+        
+    Returns:
+        录取概率评分
+    """
+    # 这里是录取概率评分的计算逻辑
+    # 为简化示例，这里使用默认值
+    dimension_scores = [
+        {
+            "name": "备考时间",
+            "score": ADMISSION_SCORE_DEFAULTS["备考时间"],
+            "weight": ADMISSION_SCORE_WEIGHTS["备考时间"],
+            "weighted_score": ADMISSION_SCORE_DEFAULTS["备考时间"] * ADMISSION_SCORE_WEIGHTS["备考时间"],
+            "description": ADMISSION_SCORE_LEVELS["low"]["descriptions"]["备考时间"]
+        },
+        # ... 其他维度的评分 ...
+    ]
+    
+    total_score = sum(item["weighted_score"] for item in dimension_scores)
+    
+    return {
+        "dimension_scores": dimension_scores,
+        "total_score": total_score
+    }
+
+def calculate_total_scores(score_cards: Dict[str, List[Dict[str, Any]]], target_info: TargetInfo) -> List[Dict[str, Any]]:
+    """计算总评分
+    
+    Args:
+        score_cards: 评分卡结果
+        target_info: 目标信息
+        
+    Returns:
+        总评分结果
+    """
+    # 获取各评分卡
+    major_scores = {f"{score['school_name']}_{score['major_code']}": score for score in score_cards.get("major_card", [])}
+    location_scores = {f"{score['school_name']}_{score['major_code']}": score for score in score_cards.get("location_card", [])}
+    
+    if target_info.intention == "就业":
+        employment_scores = {f"{score['school_name']}_{score['major_code']}": score for score in score_cards.get("employment_card", [])}
+        advanced_study_scores = {}
+    else:
+        advanced_study_scores = {f"{score['school_name']}_{score['major_code']}": score for score in score_cards.get("advanced_study_card", [])}
+        employment_scores = {}
+    
+    # 计算总评分
+    total_scores = []
+    
+    for school_info in target_info.schools:
+        key = f"{school_info.school_name}_{school_info.major_code}"
+        
+        # 获取各评分卡得分
+        major_score = major_scores.get(key, {"total_score": 0})
+        location_score = location_scores.get(key, {"total_score": 0})
+        
+        if target_info.intention == "就业":
+            employment_score = employment_scores.get(key, {"total_score": 0})
+            card_score = (
+                major_score["total_score"] * SCORE_CARD_WEIGHTS["major_card"] +
+                location_score["total_score"] * SCORE_CARD_WEIGHTS["location_card"] +
+                employment_score["total_score"] * SCORE_CARD_WEIGHTS["employment_card"]
+            )
+        else:
+            advanced_study_score = advanced_study_scores.get(key, {"total_score": 0})
+            card_score = (
+                major_score["total_score"] * SCORE_CARD_WEIGHTS["major_card"] +
+                location_score["total_score"] * SCORE_CARD_WEIGHTS["location_card"] +
+                advanced_study_score["total_score"] * SCORE_CARD_WEIGHTS["advanced_study_card"]
+            )
+        
+        # 计算录取概率得分
+        admission_score = calculate_admission_score(school_info, target_info)
+        
+        # 计算总分
+        total_score = (
+            card_score * TOTAL_SCORE_WEIGHTS["score_card"] +
+            admission_score["total_score"] * TOTAL_SCORE_WEIGHTS["admission_probability"]
+        )
+        
+        # 构建结果
+        result = {
+            "school_name": school_info.school_name,
+            "major_code": school_info.major_code,
+            "major_name": school_info.major_name,
+            "total_score": total_score,
+            "card_score": card_score,
+            "admission_score": admission_score["total_score"],
+            "major_score": major_score["total_score"],
+            "location_score": location_score["total_score"]
+        }
+        
+        if target_info.intention == "就业":
+            result["employment_score"] = employment_score["total_score"]
+        else:
+            result["advanced_study_score"] = advanced_study_score["total_score"]
+        
+        total_scores.append(result)
+    
+    # 按总分排序
+    total_scores.sort(key=lambda x: x["total_score"], reverse=True)
+    
+    return total_scores 
