@@ -30,23 +30,22 @@ def get_school_detail():
         # 获取请求参数
         data = request.get_json()
         school_name = data.get('school_name')
+        major_name = data.get('major_name')
         
-        if not school_name:
+        if not school_name or not major_name:
             return jsonify({
-                'code': 400,
+                'code': 400,    
                 'message': '缺少学校名称参数'
             })
         
         # 获取学校就业数据
-        employment_info = EMPLOYMENT_DATA.get(school_name, [])
+        school_info = _find_school_major(school_name, major_name)
+        # employment_info = EMPLOYMENT_DATA.get(school_name, [])
         
         # 返回结果
         return jsonify({
             'code': 0,
-            'data': {
-                'school_name': school_name,
-                'employment_data': employment_info
-            }
+            'data': school_info
         })
     except Exception as e:
         logger.error(f"获取学校详情时出错: {str(e)}")
