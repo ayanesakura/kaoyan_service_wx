@@ -16,6 +16,13 @@ import pickle
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
+from wxcloudrun.score_card.score_data_loader import (
+    get_school_data,
+    get_major_data,
+    SCHOOL_DATA,
+    MAJOR_DATA
+)
+
 # 定义本地缓存文件路径
 city_level_map = CITY_LEVEL_MAP
 
@@ -61,6 +68,15 @@ def _filter_schools(target_info: TargetInfo) -> List[SchoolInfo]:
     target_majors_and_directions = set(target_info.majors + target_info.directions)
     
     for school_data in SCHOOL_DATAS:
+        # 获取学校数据，检查软科排名
+        school_name = school_data['school_name']
+        school_info_data = get_school_data(school_name)
+        
+        # 如果学校没有软科排名数据，跳过这个学校
+        if not school_info_data or school_info_data.rank is None:
+            logger.warning(f"学校 {school_name} 没有软科排名数据，将被过滤掉")
+            continue
+            
         # 检查学校是否在目标城市列表中
         if target_info.school_cities:
             school_in_target_cities = any(
@@ -89,7 +105,6 @@ def _filter_schools(target_info: TargetInfo) -> List[SchoolInfo]:
         # 检查学校层次是否符合要求
         if target_info.levels:
             school_level_match = False
-            school_name = school_data['school_name']
             
             if 'c9' in [level.lower() for level in target_info.levels] and school_name in city_level_map['c9']:
                 school_level_match = True

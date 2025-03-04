@@ -1,5 +1,6 @@
 """评分卡相关常量"""
 from wxcloudrun.score_card.city_data_loader import CITY_SCORES
+from datetime import date
 
 # 学校层次
 SCHOOL_LEVELS = {
@@ -10,16 +11,21 @@ SCHOOL_LEVELS = {
     '其他': 0
 }
 
-# 分数权重
+# 分数权重 - 调整后确保总和为100
 SCORE_WEIGHTS = {
-    '备考时间': 5,
+    '备考时间': 10,
     '英语基础': 5,
-    '专业匹配度': 20,
-    '竞争强度': 20,
+    '专业匹配度': 10,  # 从20降到15
+    '竞争强度': 15,    # 从20降到15
     '录取规模': 10,
-    '学校跨度': 30,
-    '专业排名': 10
+    '学校跨度': 20,    # 从30降到20
+    '专业排名': 10,
+    '学校知名度': 10,  # 新增
+    '专业知名度': 10   # 新增
 }
+
+# 确保权重总和为100
+assert sum(SCORE_WEIGHTS.values()) == 100, "分数权重总和必须为100"
 
 # 专业排名分数对应表
 RANK_SCORES = {
@@ -209,7 +215,8 @@ PREP_TIME_SCORES = {
 ENGLISH_LEVEL_SCORES = {
     'CET6': {'score': 80, 'desc': '已过六级'},
     'CET4': {'score': 60, 'desc': '已过四级'},
-    'NONE': {'score': 40, 'desc': '未过四六级'}
+    'NONE': {'score': 40, 'desc': '未过四六级'},
+    '其他': {'score': 40, 'desc': '未过四六级'}
 }
 
 # 专业排名分数
@@ -237,15 +244,16 @@ GRADE_PREP_MONTHS = {
     '大四': 4  # 假设9月开学,到12月考试约4个月
 }
 
-# 考研日期配置
-EXAM_DAY = 23  # 每年12月23日
+# 考研日期 - 月份和日期
+EXAM_MONTH = 12
+EXAM_DAY = 23
 
 # 专业数据文件路径
 MAJOR_DETAIL_FILE = 'resources/major_detail_flat.json'
 
 # 竞争强度默认值配置
 COMPETITION_DEFAULT_SCORE = {
-    'score': 50,
+    'score': 90,
     'desc': '无报录比数据'
 }
 
@@ -540,4 +548,10 @@ ADVANCED_STUDY_LEVELS = {
             '美国留学占比': '美国留学机会有限'
         }
     }
-} 
+}
+
+# 学校知名度权重
+SCHOOL_REPUTATION_WEIGHT = 0.1
+
+# 专业知名度权重
+MAJOR_REPUTATION_WEIGHT = 0.1 

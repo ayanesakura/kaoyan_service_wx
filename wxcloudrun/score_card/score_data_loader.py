@@ -115,26 +115,19 @@ def _add_test_major_data():
     logger.info(f"添加了 {count} 条测试专业数据")
 
 def get_school_data(school_name: str) -> Optional[MergeSchoolData]:
-    """获取学校数据
-    
-    Args:
-        school_name: 学校名称
-        
-    Returns:
-        学校数据
-    """
+    """获取学校数据"""
+    # 如果数据尚未加载，先加载数据
+    if not SCHOOL_DATA:
+        logger.info("学校数据尚未加载，正在加载...")
+        load_data()
     return SCHOOL_DATA.get(school_name)
 
 def get_major_data(school_name: str, major_code: str) -> Optional[MergeMajorData]:
-    """获取专业数据
-    
-    Args:
-        school_name: 学校名称
-        major_code: 专业代码
-        
-    Returns:
-        专业数据
-    """
+    """获取专业数据"""
+    # 如果数据尚未加载，先加载数据
+    if not MAJOR_DATA:
+        logger.info("专业数据尚未加载，正在加载...")
+        load_data()
     return MAJOR_DATA.get((school_name, major_code))
 
 def get_all_school_names() -> List[str]:
@@ -196,4 +189,7 @@ def validate_data():
 # 初始化数据
 init_data()
 # 验证数据完整性
-validate_data() 
+validate_data()
+
+# 模块导入时自动加载数据
+load_data() 
