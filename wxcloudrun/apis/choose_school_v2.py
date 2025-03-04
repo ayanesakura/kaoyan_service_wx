@@ -235,7 +235,7 @@ def analyze_schools(user_info: UserInfo, target_info: TargetInfo, debug: bool = 
         for level in probability_groups:
             probability_groups[level].sort(key=lambda x: float(x['total_score']), reverse=True)
             probability_groups[level] = probability_groups[level][:3]  # 只保留前三名
-        
+        logger.info(f"最终学校列表: {probability_groups}")
         return {
             "code": 0,
             "data": probability_groups,
@@ -371,12 +371,15 @@ def choose_schools_v2():
         global SCHOOL_DATAS
         request_data = request.get_json()
 
+
         user_info = UserInfo(**request_data['user_info'])
         target_info = TargetInfo(**request_data['target_info'])
         debug_mode = request_data.get('debug', False)
         
         result = analyze_schools(user_info, target_info, debug_mode)
-        
+        logger.info(f"choose_schools_v2 result: {result}")
+        temp = json.dumps(request_data, ensure_ascii=False)
+        logger.info(f"choose_schools_v2 request_data    : {temp}")
         return jsonify(result)
         
     except Exception as e:
@@ -478,9 +481,21 @@ def _convert_to_target_school(school_info: SchoolInfo, score_info: Dict) -> Dict
     def convert_score_card(card_data: Dict) -> Dict:
         if not card_data:
             return {'total_score': 0}
-        result = {'total_score': card_data.get('total_score', 0)}
+        result = {}
+        # 处理total_score
+        total_score = card_data.get('total_score', 0)
+        if isinstance(total_score, float):
+            result['total_score'] = round(total_score, 1)
+        else:
+            result['total_score'] = total_score
+            
+        # 处理其他维度分数
         for dim in card_data.get('dimension_scores', []):
-            result[dim['name']] = dim['score']
+            score = dim['score']
+            if isinstance(score, float):
+                result[dim['name']] = round(score, 1)
+            else:
+                result[dim['name']] = score
         return result
     
     return {
@@ -491,7 +506,7 @@ def _convert_to_target_school(school_info: SchoolInfo, score_info: Dict) -> Dict
         "major_code": school_info.major_code,
         "admission_probability": f"{admission_info['probability']}%",
         "admission_score": convert_score_card(score_card.get('admission_score')),
-        "total_score": str(_calculate_school_score(score_card, admission_info)),
+        "total_score": str(round(float(_calculate_school_score(score_card, admission_info)), 1)),
         "location_score": convert_score_card(score_card.get('location_card')),
         "major_score": convert_score_card(score_card.get('major_card')),
         "sx_score": convert_score_card(score_card.get('advanced_study_card')),
