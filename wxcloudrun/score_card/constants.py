@@ -393,8 +393,8 @@ ADMISSION_SCORE_LEVELS = {
 # 非体制就业评分权重
 NON_SYSTEM_EMPLOYMENT_SCORE_WEIGHTS = {
     "employment_rate": 0.4,      # 就业率权重
-    "school_satisfaction": 0.3,  # 学校环境满意度权重
-    "major_satisfaction": 0.3    # 专业就业满意度权重
+    # "school_satisfaction": 0.3,  # 学校环境满意度权重
+    "major_satisfaction": 0.6    # 专业就业满意度权重
 }
 
 # 非体制就业评分默认值

@@ -273,7 +273,7 @@ class NonSystemEmploymentScoreCalculator:
         major_code = school_info.major_code
         # 计算各维度得分
         employment_rate = self.calculate_employment_rate_score(school_name)
-        school_satisfaction = self.calculate_school_satisfaction_score(school_name)
+        # school_satisfaction = self.calculate_school_satisfaction_score(school_name)
         major_satisfaction = self.calculate_major_satisfaction_score(school_name, major_code)
         
         # 计算加权总分
@@ -287,15 +287,15 @@ class NonSystemEmploymentScoreCalculator:
                 "percentile": employment_rate["percentile"],
                 "value": employment_rate["value"]
             },
-            {
-                "name": "学校环境满意度",
-                "score": school_satisfaction["score"],
-                "weight": NON_SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["school_satisfaction"],
-                "weighted_score": school_satisfaction["score"] * NON_SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["school_satisfaction"],
-                "description": school_satisfaction["description"],
-                "percentile": school_satisfaction["percentile"],
-                "value": school_satisfaction["value"]
-            },
+            # {
+            #     "name": "学校环境满意度",
+            #     "score": school_satisfaction["score"],
+            #     "weight": NON_SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["school_satisfaction"],
+            #     "weighted_score": school_satisfaction["score"] * NON_SYSTEM_EMPLOYMENT_SCORE_WEIGHTS["school_satisfaction"],
+            #     "description": school_satisfaction["description"],
+            #     "percentile": school_satisfaction["percentile"],
+            #     "value": school_satisfaction["value"]
+            # },
             {
                 "name": "专业就业满意度",
                 "score": major_satisfaction["score"],
